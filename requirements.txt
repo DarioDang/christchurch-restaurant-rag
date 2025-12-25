@@ -1,0 +1,28 @@
+# Core RAG dependencies
+openai>=1.0.0
+streamlit>=1.28.0
+emoji>=2.8.0
+streamlit-geolocation>=0.0.10
+
+# Phoenix tracing
+arize-phoenix>=4.0.0
+openinference-instrumentation-openai
+opentelemetry-sdk
+opentelemetry-exporter-otlp
+
+# Qdrant and embedding dependencies
+qdrant-client>=1.7.0
+sentence-transformers>=2.2.0
+torch>=2.0.0
+rank-bm25>=0.2.2
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+rapidfuzz>=3.0.0
+
+# Utilities
+tqdm>=4.65.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+pytz ==2025.2

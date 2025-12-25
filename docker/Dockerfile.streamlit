@@ -1,0 +1,71 @@
+# ============================================
+# Dockerfile for Streamlit Chat Interface
+# Refactored Restaurant RAG System
+# ============================================
+
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# ============================================
+# System Dependencies
+# ============================================
+RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================
+# Python Dependencies
+# ============================================
+
+# Copy requirements first (for Docker layer caching)
+COPY requirements.txt .
+
+# Install Python packages
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# ============================================
+# Application Code - Refactored Structure
+# ============================================
+
+# Copy all refactored modules
+COPY config/ ./config/
+COPY core/ ./core/
+COPY utils/ ./utils/
+COPY models/ ./models/
+COPY api/ ./api/
+COPY evaluation/ ./evaluation/
+
+# Copy main application files
+COPY tracing.py .
+COPY tools.py .
+COPY chat.py .
+
+# Copy data directory
+COPY data/ ./data/
+
+# ============================================
+# Configuration
+# ============================================
+
+# Expose Streamlit port
+EXPOSE 8501
+
+# Set Python environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app
+
+# ============================================
+# Health Check
+# ============================================
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8501/_stcore/health || exit 1
+
+# ============================================
+# Startup Command
+# ============================================
+CMD ["streamlit", "run", "chat.py", "--server.address=0.0.0.0", "--server.port=8501"]

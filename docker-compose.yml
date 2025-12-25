@@ -1,0 +1,120 @@
+services:
+  # ============================================
+  # 1. Phoenix - Observability Server
+  # ============================================
+  phoenix:
+    image: arizephoenix/phoenix:12.12.0
+    container_name: phoenix
+    ports:
+      - "6006:6006"   # UI + HTTP collector
+      - "4317:4317"   # gRPC collector (optional)
+    volumes:
+      - phoenix-data:/phoenix
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  # ============================================
+  # 2. Streamlit - Chat UI 
+  # ============================================
+  streamlit:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.streamlit
+    container_name: streamlit
+    ports:
+      - "8501:8501"
+    environment:
+      # OpenAI
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      
+      # Phoenix
+      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006/v1/traces
+      - PHOENIX_CLIENT_ENDPOINT=http://phoenix:6006
+      - PHOENIX_PROJECT_NAME=restaurant-rag-project
+      
+      # QDRANT CLOUD 
+      - USE_QDRANT_CLOUD=true
+      - QDRANT_URL=${QDRANT_URL}
+      - QDRANT_API_KEY=${QDRANT_API_KEY}
+      - COLLECTION_NAME=christchurch_restaurants
+      
+    volumes:
+      # Refactored modules
+      - ./config:/app/config
+      - ./core:/app/core
+      - ./utils:/app/utils
+      - ./models:/app/models
+      - ./api:/app/api
+      - ./evaluation:/app/evaluation
+      - ./tracing.py:/app/tracing.py
+      - ./tools.py:/app/tools.py
+      - ./prompt.py:/app/prompt.py
+      - ./chat.py:/app/chat.py
+      - ./data:/app/data
+    depends_on:
+      - phoenix
+    restart: unless-stopped
+    networks:
+      - rag-network
+    command: streamlit run chat.py --server.address=0.0.0.0
+
+  # ============================================
+  # 3. Evaluation Worker (Refactored)
+  # ============================================
+  eval-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    container_name: eval-worker
+    environment:
+      # OpenAI
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      
+      # Phoenix
+      - PHOENIX_CLIENT_ENDPOINT=http://phoenix:6006
+      - PHOENIX_PROJECT_NAME=restaurant-rag-project
+      
+      # ✅ QDRANT CLOUD (NEW!)
+      - USE_QDRANT_CLOUD=true
+      - QDRANT_URL=${QDRANT_URL}
+      - QDRANT_API_KEY=${QDRANT_API_KEY}
+      - COLLECTION_NAME=christchurch_restaurants
+      
+    volumes:
+      # Refactored modules
+      - ./config:/app/config
+      - ./core:/app/core
+      - ./utils:/app/utils
+      - ./models:/app/models
+      - ./api:/app/api
+      - ./evaluation:/app/evaluation
+      - ./tracing.py:/app/tracing.py
+      - ./tools.py:/app/tools.py
+      - ./data:/app/data
+      - checkpoint-data:/checkpoint
+    depends_on:
+      - phoenix
+      - streamlit
+      # ❌ REMOVED: qdrant dependency
+    restart: unless-stopped
+    networks:
+      - rag-network
+    command: python -m evaluation.worker
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  rag-network:
+    driver: bridge
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  phoenix-data:
+    driver: local
+  checkpoint-data:
+    driver: local
+
