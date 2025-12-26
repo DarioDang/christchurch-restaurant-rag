@@ -344,9 +344,11 @@ def render_welcome_section():
     # BLOCK 2: Example Query Buttons (Random 4 from 8)
     # ═══════════════════════════════════════
     
-    # 🎲 Randomly select 4 queries from the pool of 8
-    # This happens on each page load/reload
-    selected_queries = random.sample(EXAMPLE_QUERIES, 4)
+    # Store selected queries in session state to prevent re-randomization
+    if 'selected_example_queries' not in st.session_state:
+        st.session_state.selected_example_queries = random.sample(EXAMPLE_QUERIES, 4)
+    
+    selected_queries = st.session_state.selected_example_queries
     
     # Container with assistant message styling
     with st.chat_message("assistant"):
@@ -367,6 +369,10 @@ def render_welcome_section():
                     st.session_state.show_examples = False
                     st.session_state.has_user_interacted = True
                     
+                    # Clear the stored queries so new ones appear on next visit
+                    if 'selected_example_queries' in st.session_state:
+                        del st.session_state.selected_example_queries
+                    
                     # Add to chat
                     st.session_state.chat_messages.append(
                         {"role": "user", "content": example}
@@ -379,6 +385,7 @@ def render_welcome_section():
                     st.rerun()
         
         st.markdown('</div>', unsafe_allow_html=True)
+
 
 
 def render_popular_now():
