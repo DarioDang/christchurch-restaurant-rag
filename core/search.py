@@ -909,14 +909,14 @@ class RestaurantSearchTools:
     def build_cuisine_map(self):
         """Build cuisine keyword map for detection"""
         self.cuisine_keywords = {
-            "chinese": ["chinese", "dim sum", "dumpling", "wonton", "hotpot", "noodles"],
-            "japanese": ["japanese", "sushi", "ramen", "udon", "sashimi", "teriyaki"],
-            "korean": ["korean", "kimchi", "bibimbap", "bulgogi", "kbbq", "bbq"],
-            "thai": ["thai", "pad thai", "tom yum", "curry", "spicy"],
-            "vietnamese": ["vietnamese", "pho", "banh mi", "spring roll"],
-            "indian": ["indian", "curry", "tandoori", "biryani", "naan", "spicy"],
-            "italian": ["italian", "pizza", "pasta", "spaghetti", "lasagna"],
-            "mexican": ["mexican", "taco", "burrito", "quesadilla"],
+            "chinese": ["chinese", "china", "dim sum", "dumpling", "wonton", "hotpot", "noodles"],
+            "japanese": ["japanese", "japan", "sushi", "ramen", "udon", "sashimi", "teriyaki"],
+            "korean": ["korean", "korea", "kimchi", "bibimbap", "bulgogi", "kbbq", "bbq"],  
+            "thai": ["thai", "thailand", "pad thai", "tom yum", "curry", "spicy"],  
+            "vietnamese": ["vietnamese", "vietnam", "pho", "banh mi", "spring roll"],  
+            "indian": ["indian", "india", "curry", "tandoori", "biryani", "naan", "spicy"],  
+            "italian": ["italian", "italy", "pizza", "pasta", "spaghetti", "lasagna"], 
+            "mexican": ["mexican", "mexico", "taco", "burrito", "quesadilla"],  
             "american": ["american", "burger", "bbq", "steak", "fries"],
             "bar": ["bar", "pub", "tavern", "brewery", "cocktail", "drinks"],
             "cafe": ["cafe", "coffee", "espresso", "latte", "cappuccino"],
