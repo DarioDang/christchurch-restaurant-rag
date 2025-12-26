@@ -15,6 +15,7 @@ import time
 
 # Third-party
 import streamlit as st
+from opentelemetry import trace
 from openai import OpenAI
 import streamlit_geolocation as st_geolocation
 
@@ -72,13 +73,11 @@ def init_chat_tools(search_instance):
     chat_tools = tools.Tools()
     
     try:
-        # Wrap search with Phoenix tracing
-        decorated_search = tracer.tool(
-            name="smart_restaurant_search",
-            description="Hybrid BM25 + Vector search for restaurant reviews with Tier 1 filtering"
-        )(search_instance.smart_restaurant_search)
-        
-        chat_tools.add_tool(decorated_search, tools.smart_search_schema)
+        # ✅ Register tool directly WITHOUT decorator
+        chat_tools.add_tool(
+            search_instance.smart_restaurant_search,
+            tools.smart_search_schema
+        )
         
     except Exception as e:
         st.error(f"Tool registration failed: {e}")
@@ -482,9 +481,7 @@ def render_chat_message(msg: Dict[str, str]):
 def render_sidebar(search_instance):
     """Render sidebar with location settings and user-friendly tips"""
     with st.sidebar:
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # 1. LOCATION SETTINGS (Keep as is)
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Location Settings (keep as is)
         st.subheader("📍 Location Settings")
         
         enable_location = st.toggle(
@@ -529,36 +526,32 @@ def render_sidebar(search_instance):
         
         st.divider()
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # 2. POPULAR RIGHT NOW (NEW!)
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Popular Right Now
         render_popular_now()
 
         st.divider()
         
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # 4. POPULAR SEARCHES (Replace cuisines)
+        # Use food emojis instead of flag emojis
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         st.subheader("🍽️ Popular Searches")
 
-        # Cuisine tags with country flags
         st.markdown("**By Cuisine:**")
         cuisine_tags = [
-            ("🇨🇳 Chinese", "Chinese"),
-            ("🇯🇵 Japanese", "Japanese"),
-            ("🇮🇹 Italian", "Italian"),
-            ("🇹🇭 Thai", "Thai"),
-            ("🇮🇳 Indian", "Indian"),
-            ("🇻🇳 Vietnam", "Vietnam"),
-            ("🇰🇷 Korean", "Korean"),
-            ("🇺🇸 American", "American"),
+            ("Chinese", "Chinese"),
+            ("Japanese", "Japanese"),
+            ("Italian", "Italian"),
+            ("Thai", "Thai"),
+            ("Indian", "Indian"),
+            ("Vietnam", "Vietnam"),
+            ("Korean", "Korean"),
+            ("American", "American"),
         ]
 
         cols = st.columns(2)
         for i, (display_name, cuisine) in enumerate(cuisine_tags):
             with cols[i % 2]:
                 if st.button(display_name, key=f"cuisine_{cuisine}", use_container_width=True):
-                    # Add query to chat
                     query = f"Best {cuisine} restaurants"
                     st.session_state.show_examples = False
                     st.session_state.has_user_interacted = True
@@ -589,9 +582,7 @@ def render_sidebar(search_instance):
         
         st.divider()
         
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # 4. SYSTEM INFO (Move to bottom, collapsible)
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # System Info
         with st.expander("ℹ️ System Info", expanded=False):
             st.caption("**Database Stats:**")
             st.caption(f"• {len(search_instance.all_restaurants)} restaurants")
@@ -676,43 +667,54 @@ def process_llm_response(chat_tools: tools.Tools):
                                 
                                 # Parse and inject location
                                 tool_args = json.loads(entry.arguments)
-
-                                # Store original lat/lon before injection
-                                original_lat = tool_args.get("user_lat")
-                                original_lon = tool_args.get("user_lon")
-
                                 tool_args = inject_location_to_tool_args(tool_args, span=llm_span)
-
-                                # Get updated coordinates
+                                
+                                # Get coordinates
                                 lat = tool_args.get("user_lat")
                                 lon = tool_args.get("user_lon")
                                 
-                                # Execute tool
-                                class UpdatedToolCall:
-                                    def __init__(self, original_entry, new_arguments):
-                                        self.call_id = original_entry.call_id
-                                        self.name = original_entry.name
-                                        self.arguments = new_arguments
+                                # ✅ Create explicit tool span for Phoenix Cloud
+                                with tracer.start_as_current_span(
+                                    "smart_restaurant_search",
+                                    openinference_span_kind="tool"
+                                ) as tool_span:
+                                    
+                                    # Log input
+                                    tool_span.set_attribute("tool.name", "smart_restaurant_search")
+                                    tool_span.set_attribute("tool.description", 
+                                        "Hybrid BM25 + Vector search for restaurant reviews with Tier 1 filtering")
+                                    tool_span.set_attribute("input.value", json.dumps(tool_args))
+                                    tool_span.set_attribute("input.mime_type", "application/json")
+                                    
+                                    # Log location
+                                    if lat is not None and lon is not None:
+                                        tool_span.set_attribute("location.latitude", float(lat))
+                                        tool_span.set_attribute("location.longitude", float(lon))
+                                        tool_span.set_attribute("location.enabled", True)
+                                        tool_span.set_attribute("location.city", "Christchurch")
+                                        tool_span.set_attribute("location.country", "New Zealand")
+                                    
+                                    # Execute tool
+                                    class UpdatedToolCall:
+                                        def __init__(self, original_entry, new_arguments):
+                                            self.call_id = original_entry.call_id
+                                            self.name = original_entry.name
+                                            self.arguments = new_arguments
+                                    
+                                    updated_entry = UpdatedToolCall(entry, json.dumps(tool_args))
+                                    result = chat_tools.function_call(updated_entry)
+                                    
+                                    # Log output
+                                    tool_span.set_attribute("output.value", result["output"])
+                                    tool_span.set_attribute("output.mime_type", "application/json")
                                 
-                                updated_entry = UpdatedToolCall(entry, json.dumps(tool_args))
-                                result = chat_tools.function_call(updated_entry)
-
-                                #  Log location attributes to LLM span 
+                                # Log to parent spans
                                 if lat is not None and lon is not None:
-                                    llm_span.set_attribute("user.location.enabled", True)
-                                    llm_span.set_attribute("user.location.latitude", lat)
-                                    llm_span.set_attribute("user.location.longitude", lon)
-                                    llm_span.set_attribute("user.location.coordinates", f"{lat},{lon}")
-                                    llm_span.set_attribute("user.location.city", "Christchurch")
-                                    llm_span.set_attribute("user.location.country", "New Zealand")
-                                    llm_span.set_attribute("user.location.lat_rounded", round(lat, 2))
-                                    llm_span.set_attribute("user.location.lon_rounded", round(lon, 2))
-                                    llm_span.set_attribute("user.location.timestamp", 
-                                                         st.session_state.get('location_timestamp', 0))
-                                    print(f"📊 LOGGED TO PHOENIX: lat={lat:.6f}, lon={lon:.6f}")
-                                else:
-                                    llm_span.set_attribute("user.location.enabled", False)
-                                    llm_span.set_attribute("user.location.reason", "Location not shared by user")
+                                    llm_span.set_attribute("user_lat", float(lat))
+                                    llm_span.set_attribute("user_lon", float(lon))
+                                    chain_span.set_attribute("user_lat", float(lat))
+                                    chain_span.set_attribute("user_lon", float(lon))
+                                    print(f"✅ LOGGED COORDINATES: lat={lat:.6f}, lon={lon:.6f}")
                                 
                                 # Extract reference text for Phoenix QA
                                 try:
@@ -729,7 +731,7 @@ def process_llm_response(chat_tools: tools.Tools):
                                 except Exception as e:
                                     chain_span.set_attribute("reference_error", str(e))
                                 
-                                # Phoenix tracing
+                                # Phoenix tracing (keep for backward compatibility)
                                 llm_span.set_attribute("tool.name", entry.name)
                                 llm_span.set_attribute("tool.input", entry.arguments)
                                 llm_span.set_attribute("tool.output", result["output"])
