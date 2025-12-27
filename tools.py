@@ -50,7 +50,8 @@ def _get_or_create_instance():
 # Export for backward compatibility
 def smart_restaurant_search(query: str, use_cache: bool = True, 
                            user_lat: Optional[float] = None, 
-                           user_lon: Optional[float] = None):
+                           user_lon: Optional[float] = None,
+                           max_distance_km: Optional[float] = None):
     """
     Backward compatible search function
     
@@ -65,7 +66,8 @@ def smart_restaurant_search(query: str, use_cache: bool = True,
         query=query,
         use_cache=use_cache,
         user_lat=user_lat,
-        user_lon=user_lon
+        user_lon=user_lon,
+        max_distance_km=max_distance_km
     )
 
 
