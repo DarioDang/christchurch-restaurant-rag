@@ -5,7 +5,7 @@ Distance calculations and location-based intent detection
 
 import math
 import re
-from typing import Dict
+from typing import Dict, Optional
 
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -55,145 +55,51 @@ def get_distance_category(distance_km: float) -> str:
         return "Further away (> 5km)"
     
 
-def detect_location_intent(query: str) -> Dict[str, any]:
+def detect_location_intent(query: str, user_max_distance_km: Optional[float] = None) -> Dict[str, any]:
     """
-    Detect location-based intent in queries
+    Detect location-based intent in queries.
     
-    CRITICAL: Only returns is_location_query=True if EXPLICIT location keywords are present.
-    Does NOT assume location intent just because user has coordinates enabled.
+    SIMPLIFIED LOGIC:
+    - Keywords ONLY trigger location mode (don't set distance)
+    - Distance comes from user's slider setting
+    - If no slider value, use sensible default (5km)
     
     Args:
         query: User search query
+        user_max_distance_km: User's slider setting (takes priority)
     
     Returns:
-        Dictionary with location intent details:
-        {
-            'is_location_query': bool,        # True ONLY if location keywords found
-            'needs_user_location': bool,      # Same as is_location_query
-            'radius_km': float,               # Radius in km (only if location query)
-            'location_keywords': list,        # Matched keywords
-            'urgency': str                    # 'immediate', 'normal'
-        }
+        Dictionary with location intent details
     """
     query_lower = query.lower().strip()
 
     # Default: NO location intent
     location_intent = {
-        'is_location_query': False,     # ← Defaults to False
-        'needs_user_location': False,   # ← Defaults to False
-        'radius_km': None,              # ← No radius by default
+        'is_location_query': False,
+        'needs_user_location': False,
+        'radius_km': None,
         'location_keywords': [],
-        'urgency': 'normal'
-    }
-
-    # Location patterns with different radii
-    location_patterns = {
-        'immediate': {
-            'keywords': [
-                'right here',
-                'here',
-                'this place',
-                'this block',
-                'this street',
-                'same street',
-                'outside',
-                'just here',
-                'around this spot'
-            ],
-            'radius': 0.5,
-            'urgency': 'immediate'
-        },
-        'walking': {
-            'keywords': [
-                'walking distance',
-                'walkable',
-                'walk to',
-                'walkable distance',
-                'on foot',
-                'by foot',
-                'easy walk',
-                'short walk',
-                'within walking range',
-                'close enough to walk'
-            ],
-            'radius': 1.0,
-            'urgency': 'normal'
-        },
-        'nearby': {
-            'keywords': [
-                'nearby',
-                'near me',
-                'near',
-                'around me',
-                'around here',
-                'close to me',
-                'close by',
-                'not far',
-                'pretty close',
-                'local',
-                'near where i am',
-                'near my place',      
-                'close to my place',  
-            ],
-            'radius': 2.0,
-            'urgency': 'normal'
-        },
-        'area': {
-            'keywords': [
-                'in the area',
-                'around',
-                'around the area',
-                'vicinity',
-                'neighborhood',
-                'near the city',
-                'city area',
-                'close to town',
-                'around town',
-                'near central',
-                'near cbd'
-            ],
-            'radius': 5.0,
-            'urgency': 'normal'
-        },
-        'driving': {
-            'keywords': [
-                'driving distance',
-                'drive to',
-                'short drive',
-                'worth driving',
-                'car ride',
-                'by car',
-                'not too far to drive',
-                'within driving distance',
-                'nearby suburbs'
-            ],
-            'radius': 10.0,
-            'urgency': 'normal'
-        }
+        'urgency': 'normal',
+        'distance_source': None
     }
 
     # ========================================
-    # STEP 1: Check for EXPLICIT location keywords
+    # STEP 1: Simple location keyword detection
     # ========================================
     
-    # Flatten keywords with their category info
-    keyword_patterns = []
-    for category, pattern_info in location_patterns.items():
-        for keyword in pattern_info['keywords']:
-            keyword_patterns.append((keyword, pattern_info))
-
-    # Sort keywords by length (longest phrase first to avoid partial matches)
-    keyword_patterns.sort(key=lambda x: len(x[0]), reverse=True)
-
-    # Match against query
-    matched_keyword = None
-    matched_pattern = None
+    # Simple list of location trigger words
+    location_keywords = [
+        'nearby', 'near me', 'near', 'close', 'close by', 'close to me',
+        'around me', 'around here', 'around', 'local', 'in the area',
+        'walking distance', 'walking', 'walkable',
+        'driving distance', 'drive', 'driving',
+        'vicinity', 'neighborhood',
+        'here', 'this area', 'my area', 'my location',
+        'near my place', 'close to my place',
+        'within', 'from here', 'from me'
+    ]
     
-    for keyword, pattern_info in keyword_patterns:
-        if keyword in query_lower:
-            matched_keyword = keyword
-            matched_pattern = pattern_info
-            break
+    matched_keywords = [kw for kw in location_keywords if kw in query_lower]
 
     # ========================================
     # STEP 2: Check for explicit distance (e.g., "within 3km")
@@ -214,31 +120,37 @@ def detect_location_intent(query: str) -> Dict[str, any]:
             break
 
     # ========================================
-    # STEP 3: STRICT DECISION - Only set True if keywords OR distance found
+    # STEP 3: DECISION LOGIC (Slider-First!)
     # ========================================
     
-    if matched_keyword or explicit_distance:
-        # Location keywords OR explicit distance detected
+    if matched_keywords or explicit_distance:
+        # Location keywords or explicit distance detected
         location_intent['is_location_query'] = True
         location_intent['needs_user_location'] = True
+        location_intent['location_keywords'] = matched_keywords
         
-        # Set radius
-        if explicit_distance:
-            # Explicit distance takes priority
+        # PRIORITY ORDER:
+        # 1. User's slider (HIGHEST PRIORITY)
+        # 2. Explicit distance in query ("within 3km")
+        # 3. Default fallback (5km)
+        
+        if user_max_distance_km is not None:
+            # ✅ User set slider - USE IT!
+            location_intent['radius_km'] = user_max_distance_km
+            location_intent['distance_source'] = 'user_slider'
+            print(f"🎯 Using slider distance: {user_max_distance_km}km")
+        
+        elif explicit_distance:
+            # Query has "within Xkm"
             location_intent['radius_km'] = explicit_distance
-            location_intent['location_keywords'] = [f"within {explicit_distance}km"]
-        elif matched_pattern:
-            # Use radius from matched keyword pattern
-            location_intent['radius_km'] = matched_pattern['radius']
-            location_intent['urgency'] = matched_pattern['urgency']
-            location_intent['location_keywords'] = [matched_keyword]
-    
-    # ========================================
-    # CRITICAL: If NO keywords found, return False
-    # ========================================
-    
-    # If we reach here without setting is_location_query to True,
-    # it remains False (no location intent detected)
+            location_intent['distance_source'] = 'query_explicit'
+            print(f"📏 Using query distance: {explicit_distance}km")
+        
+        else:
+            # No slider, no explicit distance → default
+            location_intent['radius_km'] = 5.0
+            location_intent['distance_source'] = 'default'
+            print(f"📍 Using default distance: 5km")
     
     return location_intent
 
