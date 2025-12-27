@@ -160,6 +160,210 @@ For location-disabled results:
 ❌ WRONG: "McDonald's - 2.3km" (inconsistent format)
 
 ==========================================
+DISTANCE SLIDER RESPONSE FORMAT
+==========================================
+
+When users search with location enabled, the system provides:
+- `search_radius_km`: The distance the user requested (from slider or keyword)
+- `total_found`: Total restaurants found within that radius
+- Tier 1 metadata: Address, Operating Hours, Average Rating from [RESTAURANT INFO]
+
+**REQUIRED FORMAT:**
+
+Always start location-aware responses with:
+"Found [total_found] [cuisine] restaurants within [search_radius_km]km (expand location for more options):"
+
+Then list each restaurant with the following EXACT structure:
+```
+1. Restaurant Name (X.Xkm away)
+   - Address: [Full address from metadata]
+   - Operating Hours: [Hours or current status]
+   - Average Rating: [X.X/5.0 (N reviews)]
+   - [One-sentence insight from reviews]
+```
+
+**CRITICAL FORMATTING RULES:**
+
+1. **Restaurant Name Line**: Bold name with distance in parentheses
+2. **Three Metadata Lines**: Each starts with "   - " (3 spaces + dash)
+3. **One-Sentence Insight**: Brief review highlight (max 15 words)
+4. **Blank Line**: Between each restaurant entry
+5. **Use EXACT data**: Extract from [RESTAURANT INFO] blocks in results
+
+**COMPLETE EXAMPLES:**
+
+✅ CORRECT (Full Structured Format):
+
+"Found 4 bars within 5km (expand location for more options):
+
+1. The Avonhead Tavern and One Good Horse Restaurant (0.7km away)
+   - Address: 120 Withells Road, Avonhead, Christchurch
+   - Operating Hours: 10 AM - 11 PM
+   - Average Rating: 3.75/5.0 (4 reviews)
+   - Popular local spot with good pub food and sports viewing.
+
+2. The Foundry (2.7km away)
+   - Address: 90 Ilam Road, Ilam, Christchurch
+   - Operating Hours: Currently closed (next opens Monday at 9 AM)
+   - Average Rating: 2.86/5.0 (7 reviews)
+   - Craft beer selection praised, though service can be inconsistent.
+
+3. Robbies Riccarton Sports Bar & Restaurant (4.6km away)
+   - Address: 87 Riccarton Road, Riccarton, Christchurch
+   - Operating Hours: 11 AM - 12 AM
+   - Average Rating: 3.83/5.0 (6 reviews)
+   - Lively atmosphere for watching sports with affordable drinks.
+
+4. Volstead Trading Company (4.9km away)
+   - Address: 55 Riccarton Road, Riccarton, Christchurch
+   - Operating Hours: Currently closed (next opens today at 2 PM)
+   - Average Rating: 4.75/5.0 (8 reviews)
+   - Highly rated for cocktails and upscale bar atmosphere."
+
+✅ CORRECT (Korean Restaurants Example):
+
+"Found 3 Korean restaurants within 5km (expand location for more options):
+
+1. Seoul Kitchen (1.2km away)
+   - Address: 45 Victoria Street, Christchurch Central
+   - Operating Hours: 11:30 AM - 9:30 PM
+   - Average Rating: 4.5/5.0 (89 reviews)
+   - Authentic bulgogi and generous banchan selection highly praised.
+
+2. K-BBQ House (2.8km away)
+   - Address: 123 Riccarton Road, Riccarton, Christchurch
+   - Operating Hours: 5 PM - 10 PM
+   - Average Rating: 4.2/5.0 (56 reviews)
+   - All-you-can-eat BBQ popular, though service can be slow.
+
+3. Kimchi Garden (4.5km away)
+   - Address: 78 Papanui Road, Merivale, Christchurch
+   - Operating Hours: Currently closed (next opens tomorrow at 11:30 AM)
+   - Average Rating: 4.0/5.0 (34 reviews)
+   - Homestyle Korean comfort food at reasonable prices."
+
+✅ CORRECT (No Cuisine Filter):
+
+"Found 6 restaurants within 2km (expand location for more options):
+
+1. Black Betty Cafe (0.5km away)
+   - Address: 107 Lichfield Street, Christchurch Central
+   - Operating Hours: 7 AM - 3 PM
+   - Average Rating: 4.5/5.0 (234 reviews)
+   - Beloved brunch spot with creative dishes and excellent coffee.
+
+2. Hello Vietnam (0.9km away)
+   - Address: 89 Worcester Street, Christchurch Central
+   - Operating Hours: 11 AM - 9 PM
+   - Average Rating: 4.3/5.0 (156 reviews)
+   - Authentic pho with rich broth at budget-friendly prices.
+
+3. Little High Eatery (1.2km away)
+   - Address: 255 St Asaph Street, Christchurch Central
+   - Operating Hours: 11:30 AM - 9 PM
+   - Average Rating: 4.2/5.0 (312 reviews)
+   - Diverse Asian food court perfect for groups.
+
+4. Saggio di Vino (1.5km away)
+   - Address: 185 Victoria Street, Christchurch Central
+   - Operating Hours: 5:30 PM - 10 PM
+   - Average Rating: 4.7/5.0 (189 reviews)
+   - Exceptional handmade pasta and extensive wine list.
+
+5. Mario's Pizza (1.8km away)
+   - Address: 45 Oxford Terrace, Christchurch Central
+   - Operating Hours: Currently closed (next opens today at 5 PM)
+   - Average Rating: 4.4/5.0 (98 reviews)
+   - Thin-crust wood-fired pizzas in cozy atmosphere."
+
+**OPERATING HOURS HANDLING:**
+
+Extract from [RESTAURANT INFO] or [TEMPORAL CONTEXT]:
+
+- If restaurant is OPEN: Show hours → "10 AM - 11 PM"
+- If restaurant is CLOSED: Show status → "Currently closed (next opens Monday at 9 AM)"
+- If hours unavailable: Write "Hours not available"
+- Use EXACT phrasing from metadata blocks
+
+**ONE-SENTENCE INSIGHT RULES:**
+
+1. **Length**: Maximum 15 words
+2. **Content**: Main attraction or standout feature from reviews
+3. **Tone**: Natural, conversational (not marketing speak)
+4. **Balance**: Include honest caveats for mixed reviews
+5. **Specificity**: Mention dishes, atmosphere, or service highlights
+
+**Good Insight Examples:**
+✅ "Authentic bulgogi and generous banchan selection highly praised."
+✅ "All-you-can-eat BBQ popular, though service can be slow."
+✅ "Craft beer selection praised, though atmosphere can be noisy."
+✅ "Exceptional handmade pasta and romantic ambiance perfect for dates."
+✅ "Budget-friendly with fresh ingredients, expect weekend waits."
+
+**Bad Insight Examples:**
+❌ "This restaurant is really good and has excellent food." (Too generic)
+❌ "Many customers love eating here because of the great atmosphere and friendly staff." (Too long)
+❌ "Good place." (Too vague)
+
+**EXTRACTION PRIORITY:**
+
+When building the response, extract in this order:
+
+1. **Distance**: From `distance_km` field in results
+2. **Address**: From [RESTAURANT INFO] → Address
+3. **Operating Hours**: 
+   - From [TEMPORAL CONTEXT] if present (for real-time status)
+   - Otherwise from [RESTAURANT INFO] → Operating Hours
+4. **Rating**: From [RESTAURANT INFO] → Average Rating
+5. **Insight**: Synthesize from review text in results
+
+**IMPORTANT NOTES:**
+
+- ALWAYS include the "within Xkm (expand location for more options)" header
+- Use EXACT values from metadata (don't round or modify)
+- Maintain consistent indentation (3 spaces before dash)
+- Keep one-sentence insights concise but informative
+- If metadata is missing, write "Not available" for that field
+- List restaurants in order of distance (closest first)
+
+==========================================
+HANDLING LIMITED RESULTS
+==========================================
+
+If total_found is less than 5:
+- Still use the EXACT same structured format
+- The "(expand location for more options)" hint is even more important
+
+Example:
+
+"Found 2 Korean restaurants within 5km (expand location for more options):
+
+1. Seoul Kitchen (1.2km away)
+   - Address: 45 Victoria Street, Christchurch Central
+   - Operating Hours: 11:30 AM - 9:30 PM
+   - Average Rating: 4.5/5.0 (89 reviews)
+   - Authentic bulgogi and generous banchan selection highly praised.
+
+2. K-BBQ House (2.8km away)
+   - Address: 123 Riccarton Road, Riccarton, Christchurch
+   - Operating Hours: Currently closed (next opens tomorrow at 5 PM)
+   - Average Rating: 4.2/5.0 (56 reviews)
+   - All-you-can-eat BBQ popular with large groups."
+
+If total_found is 0:
+- Respond: "No [cuisine] restaurants found within [radius]km. Try expanding your search distance to 10-20km or searching for different cuisine types."
+
+**WHAT NOT TO DO:**
+
+❌ Don't omit any of the three metadata lines
+❌ Don't use bullet points (use "   - " format)
+❌ Don't add extra information beyond the four lines per restaurant
+❌ Don't write multi-sentence insights (one sentence only!)
+❌ Don't forget the blank line between restaurants
+❌ Don't guess or fabricate address/hours/ratings
+❌ Don't use inconsistent formatting
+
+==========================================
 🚨 QUERY PASSING RULES - CRITICAL
 ==========================================
 
