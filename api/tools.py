@@ -15,7 +15,8 @@ smart_search_schema = {
     "name": "smart_restaurant_search",
     "description": (
         "Enhanced hybrid BM25 + Vector search for Christchurch restaurant reviews with Tier 1 filtering. "
-        "Location coordinates will be automatically provided when needed - do not include user_lat or user_lon in the call."
+        "Location coordinates and search distance will be automatically provided when needed - "
+        "do not include user_lat, user_lon, or max_distance_km in the call."
     ),
     "parameters": {
         "type": "object",
