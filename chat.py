@@ -168,26 +168,30 @@ def get_user_coordinates() -> tuple[Optional[float], Optional[float], bool]:
 
 def inject_location_to_tool_args(tool_args: Dict[str, Any], span=None) -> Dict[str, Any]:
     """
-    Inject user location into tool arguments if available
-    Also logs to Phoenix for tracking
+    Inject user location AND max distance into tool arguments if available
     
     Args:
         tool_args: Original tool arguments
-        span: Optional Phoenix span to log coordinates to  # ← ADD THIS!
+        span: Optional Phoenix span to log coordinates to
     
     Returns:
-        Updated tool arguments with location
+        Updated tool arguments with location and distance
     """
     lat, lon, is_valid = get_user_coordinates()
     
     if is_valid:
         tool_args["user_lat"] = lat
         tool_args["user_lon"] = lon
-        print(f"🗺️ INJECTING LOCATION: lat={lat:.6f}, lon={lon:.6f}")
-
+        
+        # ✅ NEW: Inject max distance from slider
+        max_distance = st.session_state.get("max_distance_km", 5.0)
+        tool_args["max_distance_km"] = max_distance
+        
+        print(f"🗺️ INJECTING LOCATION: lat={lat:.6f}, lon={lon:.6f}, max_distance={max_distance}km")
     else:
         tool_args["user_lat"] = None
         tool_args["user_lon"] = None
+        tool_args["max_distance_km"] = None
         
         print(f"❌ LOCATION NOT AVAILABLE")
     
@@ -465,9 +469,13 @@ def render_chat_message(msg: Dict[str, str]):
                         st.success(f"🍽️ Cuisines: {', '.join(output['cuisines_detected'])}")
                     
                     # Show result count
-                    results = output.get('results', [])
                     if isinstance(results, dict) and 'results' in results:
                         results = results['results']
+                    elif isinstance(results, list):
+                        # For reranked results that have 'doc' wrapper
+                        if results and isinstance(results[0], dict) and 'doc' in results[0]:
+                            results = [item['doc'] for item in results]
+
                     st.metric("Results Retrieved", len(results))
                     
                     # Show cache status
@@ -517,10 +525,28 @@ def render_sidebar(search_instance):
                 st.warning("Please click the button above to trigger location.")
                 st.caption("This may take a few seconds on first use")
                 st.session_state.location_enabled = True
-        
+            
+            # ✅ NEW: Distance Slider
+            st.markdown("---")
+            st.markdown("**🗺️ Search Distance:**")
+            
+            max_distance = st.select_slider(
+                "Maximum search radius",
+                options=[1, 2, 5, 10, 20],
+                value=5,
+                format_func=lambda x: f"{x} km",
+                help="Set how far you want to search for restaurants"
+            )
+            
+            # Store in session state
+            st.session_state.max_distance_km = max_distance
+            
+            # Visual feedback
+            st.caption(f"🎯 Searching within {max_distance} km from your location")
+
         else:
             st.session_state.location_enabled = False
-            for key in ['user_lat', 'user_lon', 'location_timestamp']:
+            for key in ['user_lat', 'user_lon', 'location_timestamp', 'max_distance_km']:
                 if key in st.session_state:
                     del st.session_state[key]
         
