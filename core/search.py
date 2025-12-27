@@ -1797,13 +1797,14 @@ User question: "{query}"
         use_cache: bool = True,
         user_lat: Optional[float] = None,
         user_lon: Optional[float] = None,
+        max_distance_km: Optional[float] = None
     ):
         start_time = time.time()
 
         # -------------------------------------------------
         # STEP 1: Location intent (SINGLE entry point)
         # -------------------------------------------------
-        location_intent = detect_location_intent(query)
+        location_intent = detect_location_intent(query, user_max_distance_km=max_distance_km)
 
         if location_intent["is_location_query"]:
             if user_lat is None or user_lon is None:
