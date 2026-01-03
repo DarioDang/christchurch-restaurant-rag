@@ -12,6 +12,8 @@ import json
 import random 
 from typing import Dict, List, Optional, Any
 import time
+import uuid
+
 
 # Third-party
 import streamlit as st
@@ -25,6 +27,7 @@ from prompt import DEVELOPER_PROMPT, EXAMPLE_QUERIES
 from tracing import tracer
 from opentelemetry.trace import Status, StatusCode
 import tools
+from utils.analytics import get_analytics
 
 
 # ============================================
@@ -92,6 +95,10 @@ def init_chat_tools(search_instance):
 
 def init_session_state():
     """Initialize all session state variables"""
+
+    # Generate unique session ID for analytics
+    if "session_id" not in st.session_state:
+        st.session_state.session_id = str(uuid.uuid4())
     
     # Chat history (for OpenAI API)
     if "chat_messages" not in st.session_state:
@@ -391,31 +398,80 @@ def render_welcome_section():
 
 
 
-def render_popular_now():
-    """Show trending searches or featured restaurants"""
+def render_popular_now(search_instance):
+    """Show trending searches with smart fallback"""
     st.markdown("### 🔥 Popular Right Now")
     
-    popular = [
-        ("🍕 Best Pizza", "Best Italian pizza recommendations"),
-        ("🍔 Delivery", "Restaurants offering delivery services"),
-        ("🌮 Late Night", "Restaurants open after 10 PM"),
-    ]
+    # Get analytics instance with Qdrant client
+    analytics = get_analytics(qdrant_client=search_instance.client)
+    stats = analytics.get_stats()
     
-    for emoji_title, description in popular:
+    # Try with min_count=2 first (prefer repeated queries)
+    trending = analytics.get_trending_queries(
+        time_window_hours=24,
+        min_count=2,
+        top_n=3
+    )
+    
+    # If not enough, accept single occurrences
+    if len(trending) < 3 and stats['total_queries'] >= 3:
+        trending = analytics.get_trending_queries(
+            time_window_hours=24,
+            min_count=1,  # ← Accept queries that appear only once
+            top_n=3
+        )
+    
+    # SMART FALLBACK LOGIC
+    if len(trending) >= 3:
+        # CASE 1: We have real trending data! 🎉
+        show_count = True
+        
+        # Dynamic caption based on whether queries are repeated
+        if any(item['count'] > 1 for item in trending):
+            caption_text = f"📊 Based on {stats['queries_24h']} searches in the last 24 hours"
+        else:
+            caption_text = f"📊 Recent searches ({stats['queries_24h']} total)"
+        
+    elif stats['total_queries'] > 0:
+        # CASE 2: Some data, but not enough for trends
+        trending = analytics.get_fallback_queries()
+        show_count = False
+        caption_text = f"💡 Collecting trends... ({stats['total_queries']} searches so far)"
+        
+    else:
+        # CASE 3: Brand new app, no queries yet
+        trending = analytics.get_fallback_queries()
+        show_count = False
+        caption_text = "✨ Try these popular categories while we gather trends"
+    
+    # Show caption
+    st.caption(caption_text)
+    
+    # Render buttons
+    for i, item in enumerate(trending[:3]):
+        query_text = item['example_query']
+        display_text = item['display_text']
+        count = item.get('count', 0)
+        
+        # Add emoji based on position
+        emojis = ['🔥', '⭐', '💡']
+        emoji = emojis[i]
+        
+        
+        label = f"{emoji} {display_text}"
+        
+        # Button with click handler
         if st.button(
-            emoji_title,
-            key=f"popular_{emoji_title.replace(' ', '_')}",
+            label,
+            key=f"popular_{i}_{hash(query_text)}",
             use_container_width=True,
-            help=description
+            help=f"Search: {query_text}"
         ):
-            # Extract query from title (remove emoji)
-            query = emoji_title.split(" ", 1)[1]  # e.g., "Best Pizza" → "Best Pizza"
-            
             # Add to chat
             st.session_state.show_examples = False
             st.session_state.has_user_interacted = True
-            st.session_state.chat_messages.append({"role": "user", "content": query})
-            st.session_state.display_messages.append({"role": "user", "content": query})
+            st.session_state.chat_messages.append({"role": "user", "content": query_text})
+            st.session_state.display_messages.append({"role": "user", "content": query_text})
             st.session_state.pending_response = True
             st.rerun()
 
@@ -553,7 +609,7 @@ def render_sidebar(search_instance):
         st.divider()
 
         # Popular Right Now
-        render_popular_now()
+        render_popular_now(search_instance) 
 
         st.divider()
         
@@ -867,6 +923,17 @@ def main():
         
         st.session_state.chat_messages.append({"role": "user", "content": prompt})
         st.session_state.display_messages.append({"role": "user", "content": prompt})
+        
+        # Log query to analytics (Qdrant)
+        try:
+            analytics = get_analytics(qdrant_client=search_instance.client)
+            analytics.log_query(
+                query=prompt,
+                session_id=st.session_state.get('session_id'),
+                location_enabled=st.session_state.get('location_enabled', False)
+            )
+        except Exception as e:
+            print(f"⚠️ Analytics logging failed: {e}")
         
         st.session_state.pending_response = True
         st.rerun()
