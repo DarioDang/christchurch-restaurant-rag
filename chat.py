@@ -13,6 +13,7 @@ import random
 from typing import Dict, List, Optional, Any
 import time
 import uuid
+import streamlit.components.v1 as components
 
 
 # Third-party
@@ -120,6 +121,9 @@ def init_session_state():
     if "has_user_interacted" not in st.session_state:
         st.session_state.has_user_interacted = False
     
+    if "should_scroll" not in st.session_state:
+        st.session_state.should_scroll = False
+    
     # Location state
     if 'location_toggle_enabled' not in st.session_state:
         st.session_state.location_toggle_enabled = False
@@ -203,6 +207,29 @@ def inject_location_to_tool_args(tool_args: Dict[str, Any], span=None) -> Dict[s
         print(f"❌ LOCATION NOT AVAILABLE")
     
     return tool_args
+
+
+def auto_scroll_to_bottom():
+    """Force scroll to bottom using built-in Streamlit components"""
+    
+    # Generate unique ID to force re-execution
+    scroll_id = f"scroll-{random.randint(1000, 9999)}"
+    
+    components.html(
+        f"""
+        <div id="{scroll_id}"></div>
+        <script>
+            var element = document.getElementById("{scroll_id}");
+            if (element) {{
+                element.scrollIntoView({{behavior: "smooth"}});
+            }}
+        </script>
+        """,
+        height=0,
+    )
+
+
+
 
 
 # ============================================
@@ -878,6 +905,7 @@ def process_llm_response(chat_tools: tools.Tools):
         # Reset state
         st.session_state.show_examples = False
         st.session_state.pending_response = False
+        st.session_state.should_scroll = True
         st.rerun()
 
 
@@ -936,8 +964,14 @@ def main():
             print(f"⚠️ Analytics logging failed: {e}")
         
         st.session_state.pending_response = True
+        st.session_state.should_scroll = True
         st.rerun()
     
+    # Auto-scroll when flag is set
+    if st.session_state.get('should_scroll', False):
+        auto_scroll_to_bottom()
+        st.session_state.should_scroll = False
+
     # Process pending LLM response
     if st.session_state.pending_response:
         process_llm_response(chat_tools)
