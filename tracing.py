@@ -7,16 +7,8 @@ Based on working legacy version with TracerWrapper added
 import os
 import streamlit as st
 from functools import wraps
-
-# Safe import — if arize-phoenix has internal issues, fall back to dummy tracer
-try:
-    from phoenix.otel import register
-    from opentelemetry import trace
-    PHOENIX_AVAILABLE = True
-except Exception as e:
-    print(f"⚠️ Phoenix import failed: {e}")
-    print("⚠️ Tracing will be disabled for this session")
-    PHOENIX_AVAILABLE = False
+from phoenix.otel import register
+from opentelemetry import trace
 
 
 def get_secret(key: str, default=None):
@@ -78,11 +70,7 @@ def setup_phoenix_tracing():
     Setup Phoenix Cloud tracing - SIMPLIFIED VERSION LIKE OLD CODE
     Uses environment variables automatically picked up by register()
     """
-
-    if not PHOENIX_AVAILABLE:
-        print("⚠️ Phoenix not available, skipping tracing setup")
-        return None
-
+    
     # Get project name
     project_name = get_secret("PHOENIX_PROJECT_NAME", "restaurant-rag-production")
     
@@ -99,7 +87,7 @@ def setup_phoenix_tracing():
         # ✅ Use register() like the old working version
         # It automatically picks up PHOENIX_API_KEY and PHOENIX_COLLECTOR_ENDPOINT from env
         tracer_provider = register(
-            protocol="http/protobuf",
+            protocol="http/protobuf",  # ← Important from old version!
             project_name=project_name,
         )
         
