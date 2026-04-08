@@ -5,7 +5,7 @@ emoji>=2.8.0
 streamlit-geolocation>=0.0.10
 
 # Phoenix tracing
-arize-phoenix-otel==0.6.1
+arize-phoenix==13.18.2
 openinference-instrumentation-openai==0.1.14
 opentelemetry-sdk==1.20.0
 opentelemetry-exporter-otlp==1.20.0
