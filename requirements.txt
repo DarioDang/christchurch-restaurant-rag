@@ -6,9 +6,9 @@ streamlit-geolocation>=0.0.10
 
 # Phoenix tracing
 arize-phoenix==12.12.0
-openinference-instrumentation-openai
-opentelemetry-sdk
-opentelemetry-exporter-otlp
+openinference-instrumentation-openai==0.1.14
+opentelemetry-sdk==1.20.0
+opentelemetry-exporter-otlp==1.20.0
 
 # Qdrant and embedding dependencies
 qdrant-client>=1.7.0
