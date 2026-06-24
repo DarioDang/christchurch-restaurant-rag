@@ -39,3 +39,9 @@ logs/
 *.tmp
 *.bak
 *.swp
+
+# Add venv
+rag-restaurants
+
+# Add build-index
+build_index.py
