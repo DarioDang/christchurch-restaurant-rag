@@ -12,11 +12,31 @@
 <body>
   <div class="app">
     <header class="header">
-      <div class="header__brand">
-        <span class="header__mark">◆</span>
-        <h1 class="header__title">Christchurch Dining</h1>
-      </div>
-      <p class="header__stats" id="stats"></p>
+        <div class="header__brand">
+            <span class="header__mark">◆</span>
+            <h1 class="header__title">Christchurch Dining</h1>
+        </div>
+        <div class="header__right">
+            <p class="header__stats" id="stats"></p>
+            <div class="location">
+            <button type="button" id="location-btn" class="location__btn" aria-label="Location settings" aria-expanded="false">📍</button>
+            <div class="location__panel" id="location-panel" hidden>
+                <p class="location__header">Location</p>
+                <label class="location__row" for="location-toggle">
+                    <span>Use my location</span>
+                    <span class="toggle">
+                    <input type="checkbox" id="location-toggle" class="toggle__input" />
+                    <span class="toggle__track"><span class="toggle__thumb"></span></span>
+                    </span>
+                </label>
+                <div class="location__distance" id="location-distance" hidden>
+                    <label for="distance-slider">Search radius: <span id="distance-value">5</span>km</label>
+                    <input type="range" id="distance-slider" min="1" max="20" step="1" value="5" />
+                </div>
+                <p class="location__status" id="location-status"></p>
+            </div>
+            </div>
+        </div>
     </header>
 
     <main class="chat" id="chat" aria-live="polite"></main>

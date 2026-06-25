@@ -89,7 +89,7 @@ def detect_location_intent(query: str, user_max_distance_km: Optional[float] = N
     
     # Simple list of location trigger words
     location_keywords = [
-        'nearby', 'near me', 'near', 'close', 'close by', 'close to me',
+        'nearby', 'near me', 'near', 'close by', 'close to me',
         'around me', 'around here', 'around', 'local', 'in the area',
         'walking distance', 'walking', 'walkable',
         'driving distance', 'drive', 'driving',

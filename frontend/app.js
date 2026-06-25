@@ -2,12 +2,30 @@ const API_BASE = 'http://localhost:8000'; // change when deploying to Render
 
 let conversation = [];
 let isStreaming = false;
+let userLocation = { lat: null, lon: null, enabled: false };
+let maxDistanceKm = 5;
 
 const chatEl = document.getElementById('chat');
 const formEl = document.getElementById('composer');
 const inputEl = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
 const statsEl = document.getElementById('stats');
+
+const locationBtn = document.getElementById('location-btn');
+const locationPanel = document.getElementById('location-panel');
+const locationToggle = document.getElementById('location-toggle');
+const locationDistanceWrap = document.getElementById('location-distance');
+const distanceSlider = document.getElementById('distance-slider');
+const distanceValue = document.getElementById('distance-value');
+const locationStatus = document.getElementById('location-status');
+
+const CUISINES = ['Chinese', 'Japanese', 'Italian', 'Thai', 'Indian', 'Vietnamese', 'Korean', 'American'];
+const SERVICES = [
+  { label: 'Delivery', query: 'Restaurants with delivery' },
+  { label: 'Takeout', query: 'Restaurants with takeout' },
+  { label: 'Budget-friendly', query: 'Cheap restaurants' },
+  { label: 'Open late', query: 'Restaurants open late' },
+];
 
 init();
 
@@ -19,33 +37,150 @@ async function init() {
   } catch (e) {
     statsEl.textContent = '';
   }
-  loadExamples();
+  loadSuggestions();
 }
 
-async function loadExamples() {
-  try {
-    const res = await fetch(`${API_BASE}/api/examples`);
-    const data = await res.json();
-    renderExamples(data.examples);
-  } catch (e) {
-    // examples are a nice-to-have; fail silently
-  }
+// ============================================
+// MARKDOWN (minimal, safe subset — bold only)
+// ============================================
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
-function renderExamples(examples) {
+function renderMarkdownInline(raw) {
+  const escaped = escapeHtml(raw);
+  return escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+
+// ============================================
+// SUGGESTIONS
+// ============================================
+
+async function loadSuggestions() {
+  const [examplesRes, popularRes] = await Promise.allSettled([
+    fetch(`${API_BASE}/api/examples`).then((r) => r.json()),
+    fetch(`${API_BASE}/api/popular`).then((r) => r.json()),
+  ]);
+
   const wrap = document.createElement('div');
-  wrap.className = 'examples';
-  wrap.innerHTML = `<p class="examples__label">Try asking</p>`;
-  examples.forEach((q) => {
-    const btn = document.createElement('button');
-    btn.className = 'examples__chip';
-    btn.type = 'button';
-    btn.textContent = q;
-    btn.addEventListener('click', () => sendMessage(q));
-    wrap.appendChild(btn);
-  });
+  wrap.className = 'suggestions';
+
+  if (examplesRes.status === 'fulfilled') {
+    wrap.appendChild(buildChipSection('Try asking', examplesRes.value.examples, (q) => q));
+  }
+
+  if (popularRes.status === 'fulfilled' && popularRes.value.trending?.length) {
+    const label = popularRes.value.show_count ? 'Popular right now' : 'Popular categories';
+    const queries = popularRes.value.trending.map((t) => t.example_query);
+    wrap.appendChild(buildChipSection(label, queries, (q) => q));
+  }
+
+  wrap.appendChild(buildChipSection('By cuisine', CUISINES, (c) => `Best ${c} restaurants`));
+  wrap.appendChild(
+    buildChipSection('By service', SERVICES.map((s) => s.label), (label) =>
+      SERVICES.find((s) => s.label === label).query
+    )
+  );
+
   chatEl.appendChild(wrap);
 }
+
+function buildChipSection(label, items, toQuery) {
+  const section = document.createElement('div');
+  section.className = 'suggestions__section';
+  section.innerHTML = `<p class="suggestions__label">${label}</p>`;
+  const row = document.createElement('div');
+  row.className = 'suggestions__row';
+  items.forEach((item) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'examples__chip';
+    btn.textContent = item;
+    btn.addEventListener('click', () => sendMessage(toQuery(item)));
+    row.appendChild(btn);
+  });
+  section.appendChild(row);
+  return section;
+}
+
+function clearExamples() {
+  const ex = chatEl.querySelector('.suggestions');
+  if (ex) ex.remove();
+}
+
+// ============================================
+// LOCATION PANEL
+// ============================================
+
+function openLocationPanel() {
+  locationPanel.hidden = false;
+  requestAnimationFrame(() => locationPanel.classList.add('location__panel--visible'));
+  locationBtn.setAttribute('aria-expanded', 'true');
+}
+
+function closeLocationPanel() {
+  locationPanel.classList.remove('location__panel--visible');
+  locationBtn.setAttribute('aria-expanded', 'false');
+  setTimeout(() => {
+    locationPanel.hidden = true;
+  }, 160);
+}
+
+locationBtn.addEventListener('click', () => {
+  if (locationPanel.hidden) openLocationPanel();
+  else closeLocationPanel();
+});
+
+document.addEventListener('click', (e) => {
+  if (!locationPanel.hidden && !locationPanel.contains(e.target) && e.target !== locationBtn) {
+    closeLocationPanel();
+  }
+});
+
+function showDistanceControl() {
+  locationDistanceWrap.hidden = false;
+  requestAnimationFrame(() => locationDistanceWrap.classList.add('location__distance--visible'));
+}
+
+function hideDistanceControl() {
+  locationDistanceWrap.classList.remove('location__distance--visible');
+  setTimeout(() => {
+    locationDistanceWrap.hidden = true;
+  }, 160);
+}
+
+locationToggle.addEventListener('change', () => {
+  if (locationToggle.checked) {
+    locationStatus.textContent = 'Requesting location…';
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude, enabled: true };
+        showDistanceControl();
+        locationStatus.textContent = `Location set (±${Math.round(pos.coords.accuracy)}m accuracy)`;
+      },
+      () => {
+        locationToggle.checked = false;
+        locationStatus.textContent = 'Could not get your location. Check browser permissions.';
+      }
+    );
+  } else {
+    userLocation = { lat: null, lon: null, enabled: false };
+    hideDistanceControl();
+    locationStatus.textContent = '';
+  }
+});
+
+distanceSlider.addEventListener('input', () => {
+  maxDistanceKm = Number(distanceSlider.value);
+  distanceValue.textContent = maxDistanceKm;
+});
+
+// ============================================
+// CHAT
+// ============================================
 
 formEl.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -62,17 +197,27 @@ function sendMessage(text) {
   streamAssistantReply();
 }
 
-function clearExamples() {
-  const ex = chatEl.querySelector('.examples');
-  if (ex) ex.remove();
-}
-
 function appendUserBubble(text) {
   const bubble = document.createElement('div');
   bubble.className = 'msg msg--user';
   bubble.textContent = text;
   chatEl.appendChild(bubble);
   scrollToBottom();
+}
+
+function showThinkingIndicator() {
+  const el = document.createElement('div');
+  el.className = 'thinking';
+  el.id = 'thinking-indicator';
+  el.innerHTML = '<span class="thinking__dot"></span><span class="thinking__dot"></span><span class="thinking__dot"></span>';
+  chatEl.appendChild(el);
+  scrollToBottom();
+  return el;
+}
+
+function removeThinkingIndicator() {
+  const el = document.getElementById('thinking-indicator');
+  if (el) el.remove();
 }
 
 function createAssistantBubble() {
@@ -82,6 +227,10 @@ function createAssistantBubble() {
   chatEl.appendChild(bubble);
   scrollToBottom();
   return bubble;
+}
+
+function renderAssistantText(bubble, raw) {
+  bubble.innerHTML = renderMarkdownInline(raw) + '<span class="msg__cursor"></span>';
 }
 
 function createTraceStrip(query) {
@@ -114,18 +263,35 @@ function setStreaming(state) {
 
 async function streamAssistantReply() {
   setStreaming(true);
+  showThinkingIndicator();
+
   let assistantBubble = null;
+  let assistantRawText = '';
   let traceStrip = null;
   let buffer = '';
+  let firstEventReceived = false;
+
+  function clearThinkingOnce() {
+    if (!firstEventReceived) {
+      firstEventReceived = true;
+      removeThinkingIndicator();
+    }
+  }
 
   try {
     const res = await fetch(`${API_BASE}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: conversation }),
+      body: JSON.stringify({
+        messages: conversation,
+        user_lat: userLocation.enabled ? userLocation.lat : null,
+        user_lon: userLocation.enabled ? userLocation.lon : null,
+        max_distance_km: maxDistanceKm,
+      }),
     });
 
     if (!res.ok) {
+      removeThinkingIndicator();
       appendSystemError('The server could not process that request. Please try again.');
       setStreaming(false);
       return;
@@ -148,27 +314,34 @@ async function streamAssistantReply() {
       }
     }
   } catch (e) {
+    removeThinkingIndicator();
     appendSystemError('Lost connection while generating a response.');
   } finally {
     setStreaming(false);
   }
 
   function handleEvent(event) {
+    clearThinkingOnce();
+
     if (event.type === 'tool_call_start') {
       traceStrip = createTraceStrip(event.query);
     } else if (event.type === 'tool_call_end') {
       if (traceStrip) finishTraceStrip(traceStrip, event.mode, event.result_count);
     } else if (event.type === 'text_delta') {
       if (!assistantBubble) assistantBubble = createAssistantBubble();
-      const cursor = assistantBubble.querySelector('.msg__cursor');
-      assistantBubble.insertBefore(document.createTextNode(event.content), cursor);
+      assistantRawText += event.content;
+      renderAssistantText(assistantBubble, assistantRawText);
       scrollToBottom();
     } else if (event.type === 'error') {
       appendSystemError(event.detail || 'Something went wrong.');
     } else if (event.type === 'done') {
       conversation = event.messages;
-      const cursor = assistantBubble?.querySelector('.msg__cursor');
-      if (cursor) cursor.remove();
+      if (assistantBubble) {
+        renderAssistantText(assistantBubble, assistantRawText);
+        const cursor = assistantBubble.querySelector('.msg__cursor');
+        if (cursor) cursor.remove();
+        assistantBubble.classList.add('msg--complete');
+      }
     }
   }
 }
@@ -183,10 +356,4 @@ function appendSystemError(text) {
 
 function scrollToBottom() {
   chatEl.scrollTop = chatEl.scrollHeight;
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
 }

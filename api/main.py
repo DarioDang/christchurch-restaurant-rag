@@ -177,6 +177,7 @@ def _stream_chat_turn(request: ChatRequest):
                         input=history,
                         tools=tools_available,
                         stream=True,
+                        max_output_tokens=1500,
                     )
 
                     final_response = None
@@ -189,13 +190,18 @@ def _stream_chat_turn(request: ChatRequest):
                         if event.type == "response.output_text.delta":
                             turn_text += event.delta
                             yield _sse({"type": "text_delta", "content": event.delta})
-                        elif event.type == "response.completed":
+                        elif event.type in ("response.completed", "response.incomplete"):
                             final_response = event.response
+                            if event.type == "response.incomplete":
+                                reason = getattr(event.response, "incomplete_details", None)
+                                logger.warning("Response marked incomplete (reason=%s) — using partial output", reason)
                         elif event.type in ("response.failed", "error"):
                             logger.error("OpenAI stream error event: %s", event)
                             yield _sse({"type": "error", "detail": "The model encountered an error."})
                             chain_span.set_status(Status(StatusCode.ERROR))
                             return
+                        else:
+                            logger.debug("Unhandled stream event type: %s", event.type)
 
                     if final_response is None:
                         logger.error("Stream ended without response.completed event")

@@ -31,12 +31,18 @@ html, body {
   margin: 0 auto;
 }
 
+@keyframes appLoad {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--line);
+  animation: appLoad 0.4s ease both;
 }
 
 .header__brand { display: flex; align-items: center; gap: 0.5rem; }
@@ -48,12 +54,135 @@ html, body {
   letter-spacing: 0.01em;
   margin: 0;
 }
+
+.header__right { display: flex; align-items: center; gap: 0.75rem; position: relative; }
 .header__stats {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   color: var(--stone-dim);
   margin: 0;
 }
+
+/* ============================================
+   LOCATION POPOVER
+   ============================================ */
+
+.location { position: relative; }
+.location__btn {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--stone-dim);
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.location__btn:hover,
+.location__btn[aria-expanded="true"] {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.location__panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: 260px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  z-index: 10;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transform-origin: top right;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.97);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.location__panel--visible { opacity: 1; transform: translateY(0) scale(1); }
+
+.location__header {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--stone-dim);
+  margin: 0;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.location__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  cursor: pointer;
+  gap: 0.75rem;
+}
+
+.location__distance {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.location__distance--visible { opacity: 1; transform: translateY(0); }
+.location__distance label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--stone-dim);
+  margin-bottom: 0.4rem;
+}
+.location__distance input[type="range"] { width: 100%; accent-color: var(--gold); }
+
+.location__status {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--stone-dim);
+  margin: 0;
+  min-height: 1em;
+}
+
+.toggle { position: relative; width: 38px; height: 22px; flex-shrink: 0; }
+.toggle__input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+.toggle__track {
+  position: absolute;
+  inset: 0;
+  background: var(--panel-light);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+.toggle__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--stone-dim);
+  transition: transform 0.18s ease, background-color 0.18s ease;
+}
+.toggle__input:checked + .toggle__track { background: var(--gold); border-color: var(--gold); }
+.toggle__input:checked + .toggle__track .toggle__thumb { transform: translateX(16px); background: var(--ink); }
+.toggle__input:focus-visible + .toggle__track { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* ============================================
+   CHAT
+   ============================================ */
 
 .chat {
   flex: 1;
@@ -64,6 +193,11 @@ html, body {
   gap: 0.75rem;
 }
 
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .msg {
   max-width: 80%;
   padding: 0.7rem 1rem;
@@ -71,7 +205,10 @@ html, body {
   line-height: 1.5;
   font-size: 0.95rem;
   white-space: pre-wrap;
+  animation: msgIn 0.25s ease both;
 }
+
+.msg strong { color: var(--gold); font-weight: 600; }
 
 .msg--user { align-self: flex-end; background: var(--panel-light); color: var(--stone); }
 .msg--assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); }
@@ -84,6 +221,12 @@ html, body {
   font-size: 0.8rem;
 }
 
+@keyframes completeFlash {
+  0% { box-shadow: 0 0 0 0 rgba(215, 163, 78, 0.45); }
+  100% { box-shadow: 0 0 0 7px rgba(215, 163, 78, 0); }
+}
+.msg--complete { animation: completeFlash 0.6s ease-out; }
+
 .msg__cursor {
   display: inline-block;
   width: 0.5em;
@@ -93,8 +236,45 @@ html, body {
   margin-left: 2px;
   animation: blink 1s steps(2) infinite;
 }
-@media (prefers-reduced-motion: reduce) { .msg__cursor { animation: none; opacity: 0.6; } }
 @keyframes blink { to { opacity: 0; } }
+
+/* ============================================
+   THINKING INDICATOR
+   ============================================ */
+
+.thinking {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0.75rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  animation: msgIn 0.2s ease both;
+}
+.thinking__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--stone-dim);
+  animation: thinkingBounce 1.2s ease-in-out infinite;
+}
+.thinking__dot:nth-child(2) { animation-delay: 0.15s; }
+.thinking__dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes thinkingBounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* ============================================
+   TRACE STRIP
+   ============================================ */
+
+@keyframes traceIn {
+  from { opacity: 0; transform: translateX(-4px); }
+  to { opacity: 1; transform: translateX(0); }
+}
 
 .trace {
   align-self: flex-start;
@@ -106,6 +286,8 @@ html, body {
   color: var(--stone-dim);
   padding: 0.4rem 0.75rem;
   border-left: 2px solid var(--river);
+  animation: traceIn 0.2s ease both;
+  transition: border-color 0.2s ease, color 0.2s ease;
 }
 .trace--done { border-left-color: var(--gold); color: var(--stone); }
 
@@ -117,47 +299,62 @@ html, body {
   animation: pulse 1.4s ease-in-out infinite;
 }
 .trace__dot--done { background: var(--gold); animation: none; }
-@media (prefers-reduced-motion: reduce) { .trace__dot { animation: none; } }
 @keyframes pulse {
   0%, 100% { opacity: 0.4; transform: scale(0.85); }
   50% { opacity: 1; transform: scale(1); }
 }
 .trace__query { color: var(--stone); }
 
-.examples { align-self: stretch; display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem; }
-.examples__label {
+/* ============================================
+   SUGGESTION CHIPS
+   ============================================ */
+
+.suggestions { display: flex; flex-direction: column; gap: 1rem; margin-top: 0.5rem; }
+
+@keyframes sectionIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.suggestions__section { animation: sectionIn 0.3s ease both; }
+.suggestions__section:nth-child(1) { animation-delay: 0s; }
+.suggestions__section:nth-child(2) { animation-delay: 0.06s; }
+.suggestions__section:nth-child(3) { animation-delay: 0.12s; }
+.suggestions__section:nth-child(4) { animation-delay: 0.18s; }
+
+.suggestions__label {
   font-family: var(--font-mono);
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--stone-dim);
-  margin: 0 0 0.25rem;
+  margin: 0 0 0.5rem;
 }
+.suggestions__row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
 .examples__chip {
   text-align: left;
   background: var(--panel);
   border: 1px solid var(--line);
   color: var(--stone);
   border-radius: var(--radius);
-  padding: 0.6rem 0.9rem;
+  padding: 0.5rem 0.85rem;
   font-family: var(--font-body);
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease, background-color 0.15s ease;
 }
-.examples__chip:hover { border-color: var(--gold); }
+.examples__chip:hover { border-color: var(--gold); background: var(--panel-light); transform: translateY(-1px); }
 
-.examples__chip:focus-visible,
-.composer__input:focus-visible,
-.composer__send:focus-visible {
-  outline: 2px solid var(--gold);
-  outline-offset: 2px;
-}
+/* ============================================
+   COMPOSER
+   ============================================ */
 
 .composer {
   display: flex;
   gap: 0.5rem;
   padding: 1rem 1.5rem 1.5rem;
   border-top: 1px solid var(--line);
+  animation: appLoad 0.4s ease 0.05s both;
 }
 .composer__input {
   flex: 1;
@@ -178,12 +375,43 @@ html, body {
   width: 44px;
   font-size: 1.1rem;
   cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.12s ease;
 }
+.composer__send:hover:not(:disabled) { transform: translateY(-1px); }
+.composer__send:active:not(:disabled) { transform: translateY(0) scale(0.95); }
 .composer__send:disabled { opacity: 0.5; cursor: default; }
+
+/* ============================================
+   ACCESSIBILITY
+   ============================================ */
+
+.examples__chip:focus-visible,
+.composer__input:focus-visible,
+.composer__send:focus-visible,
+.location__btn:focus-visible,
+.location__distance input:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .header, .composer, .msg, .trace, .suggestions__section,
+  .trace__dot, .thinking__dot, .msg--complete,
+  .location__panel, .location__distance, .toggle__track, .toggle__thumb, .location__btn,
+  .examples__chip, .composer__send {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
 
 @media (max-width: 600px) {
   .header { padding: 1rem; }
   .chat { padding: 1rem; }
   .composer { padding: 0.75rem 1rem 1rem; }
   .msg { max-width: 90%; }
+  .location__panel { right: -0.5rem; width: 240px; }
 }
