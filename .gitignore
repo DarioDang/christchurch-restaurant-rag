@@ -45,3 +45,6 @@ rag-restaurants
 
 # Add build-index
 build_index.py
+
+# add tests script
+tests/test_stream.py

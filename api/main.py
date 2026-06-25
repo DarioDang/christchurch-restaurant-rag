@@ -22,6 +22,7 @@ from core.history import sanitize_client_history, cleanup_chat_history
 from api.tools import Tools, smart_search_schema
 from models.schemas import ChatRequest, ChatResponse 
 from utils.analytics import get_analytics
+from fastapi.responses import StreamingResponse
 import logging
 logging.basicConfig(
     level=logging.INFO,
@@ -118,15 +119,24 @@ def _inject_location(tool_args:dict, lat, lon, max_distance_km) -> dict:
         tool_args["max_distance_km"] = None
     return tool_args
 
-@app.post("/api/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+def _sse(data: dict) -> str:
+    """Format a dict as a single Server-Sent Events message."""
+    return f"data: {json.dumps(data)}\n\n"
+
+def _stream_chat_turn(request: ChatRequest):
+    """
+    Sync generator yielding SSE-formatted events for one chat turn.
+    Starlette's StreamingResponse runs plain (non-async) generators in a
+    thread pool automatically, so this blocking generator doesn't stall
+    the event loop even though it contains long blocking calls (the OpenAI
+    stream iteration, the tool execution).
+    """
     chat_tools = _require_chat_tools(app)
     search_instance = _require_search_instance(app)
 
     history = sanitize_client_history(request.messages)
     history = cleanup_chat_history(history, max_messages=25)
 
-    # Analytics — best-effort, never blocks or fails the chat turn
     try:
         last_user_msg = next(
             (m["content"] for m in reversed(history) if m.get("role") == "user"), None
@@ -146,13 +156,14 @@ async def chat(request: ChatRequest):
         chain_span.set_attribute("input.value", str(user_input))
 
         assistant_message = ""
+        last_tool_output = None
 
         try:
             iteration = 0
             while True:
                 iteration += 1
                 if iteration > MAX_TOOL_ITERATIONS:
-                    logger.warning("Hit MAX_TOOL_ITERATIONS (%s) — returning partial result", MAX_TOOL_ITERATIONS)
+                    logger.warning("Hit MAX_TOOL_ITERATIONS (%s)", MAX_TOOL_ITERATIONS)
                     break
 
                 with tracer.start_as_current_span("Responses.create", openinference_span_kind="llm") as llm_span:
@@ -161,12 +172,38 @@ async def chat(request: ChatRequest):
                     llm_span.set_attribute("llm.model_name", OPENAI_CHAT_MODEL)
                     llm_span.set_attribute("llm.tools.count", len(tools_available))
 
-                    response = client.responses.create(
+                    stream = client.responses.create(
                         model=OPENAI_CHAT_MODEL,
                         input=history,
                         tools=tools_available,
+                        stream=True,
                     )
 
+                    final_response = None
+                    turn_text = ""
+
+                    for event in stream:
+                        # NOTE: if no text_delta events appear during testing,
+                        # log event.type here to confirm the exact strings
+                        # your installed openai SDK version emits.
+                        if event.type == "response.output_text.delta":
+                            turn_text += event.delta
+                            yield _sse({"type": "text_delta", "content": event.delta})
+                        elif event.type == "response.completed":
+                            final_response = event.response
+                        elif event.type in ("response.failed", "error"):
+                            logger.error("OpenAI stream error event: %s", event)
+                            yield _sse({"type": "error", "detail": "The model encountered an error."})
+                            chain_span.set_status(Status(StatusCode.ERROR))
+                            return
+
+                    if final_response is None:
+                        logger.error("Stream ended without response.completed event")
+                        yield _sse({"type": "error", "detail": "Incomplete response from the model."})
+                        chain_span.set_status(Status(StatusCode.ERROR))
+                        return
+
+                    response = final_response
                     tool_called = False
 
                     for entry in response.output:
@@ -183,6 +220,12 @@ async def chat(request: ChatRequest):
                             tool_args = _inject_location(
                                 tool_args, request.user_lat, request.user_lon, request.max_distance_km
                             )
+
+                            yield _sse({
+                                "type": "tool_call_start",
+                                "name": entry.name,
+                                "query": tool_args.get("query", ""),
+                            })
 
                             with tracer.start_as_current_span(
                                 "smart_restaurant_search", openinference_span_kind="tool"
@@ -208,6 +251,8 @@ async def chat(request: ChatRequest):
                                 tool_span.set_attribute("output.value", result["output"])
                                 tool_span.set_attribute("output.mime_type", "application/json")
 
+                            last_tool_output = result["output"]
+
                             if request.user_lat is not None and request.user_lon is not None:
                                 llm_span.set_attribute("user_lat", float(request.user_lat))
                                 llm_span.set_attribute("user_lon", float(request.user_lon))
@@ -226,12 +271,21 @@ async def chat(request: ChatRequest):
 
                             history.append(result)
 
+                            try:
+                                parsed_for_count = json.loads(result["output"])
+                                result_count = len(parsed_for_count.get("results", []))
+                                mode = parsed_for_count.get("mode", "")
+                            except Exception:
+                                result_count, mode = 0, ""
+
+                            yield _sse({"type": "tool_call_end", "mode": mode, "result_count": result_count})
+
                         elif entry.type == "message":
                             try:
                                 msg = entry.content[0]
-                                assistant_message = getattr(msg, "text", "") or getattr(msg, "refusal", "")
+                                assistant_message = getattr(msg, "text", "") or getattr(msg, "refusal", "") or turn_text
                             except Exception:
-                                assistant_message = ""
+                                assistant_message = turn_text
 
                             if assistant_message:
                                 history.append({
@@ -247,25 +301,38 @@ async def chat(request: ChatRequest):
                         break
 
             chain_span.set_status(Status(StatusCode.OK))
-            # Safety-net check: did the model invent distances that
-            # don't exist in the retrieved data?
-            if history and any(m.get("type") == "function_call_output" for m in history[-3:]):
-                last_tool_output = next(
-                    (m["output"] for m in reversed(history) if m.get("type") == "function_call_output"),
-                    None
-                )
-                if last_tool_output and _check_distance_hallucination(assistant_message, last_tool_output):
-                    logger.warning("Distance hallucination detected in reply: %s", assistant_message[:200])
-                    chain_span.set_attribute("eval.distance_hallucination_detected", True)
+
+            if last_tool_output and _check_distance_hallucination(assistant_message, last_tool_output):
+                logger.warning("Distance hallucination detected in reply: %s", assistant_message[:200])
+                chain_span.set_attribute("eval.distance_hallucination_detected", True)
 
         except Exception as e:
             logger.exception("Error processing chat turn")
             chain_span.record_exception(e)
             chain_span.set_status(Status(StatusCode.ERROR))
-            # Never leak a traceback to the client — log it server-side instead
-            raise HTTPException(status_code=500, detail="Something went wrong processing your message.")
+            yield _sse({"type": "error", "detail": "Something went wrong processing your message."})
+            return
+    if not assistant_message:
+        assistant_message = "I wasn't able to put together a response for that — could you try rephrasing your question?"
+    yield _sse({"type": "done", "messages": history, "reply": assistant_message})
 
-    return ChatResponse(messages=history, reply=assistant_message)
+
+@app.post("/api/chat")
+async def chat(request: ChatRequest):
+    # Validate readiness BEFORE opening the stream, so an unready server
+    # returns a normal HTTP 503 instead of a broken SSE connection.
+    _require_chat_tools(app)
+    _require_search_instance(app)
+
+    return StreamingResponse(
+        _stream_chat_turn(request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # disable proxy buffering (relevant on Render too)
+            "Connection": "keep-alive",
+        },
+    )
 
 @app.get("/api/stats")
 async def stats():
