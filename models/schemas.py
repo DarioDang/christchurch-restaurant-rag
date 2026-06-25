@@ -342,3 +342,49 @@ class DisplayMessage(BaseModel):
             }]
         }
     }
+
+class ChatRequest(BaseModel):
+    """
+    Full-history request for the stateless /api/chat endpoint.
+    The client owns and resends the entire conversation every turn —
+    there is no server-side session store.
+    """
+    messages: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Full conversation history maintained client-side"
+    )
+    user_lat: Optional[float] = None
+    user_lon: Optional[float] = None
+    max_distance_km: float = Field(5.0, description="Search radius from the distance slider")
+    session_id: Optional[str] = Field(
+        None, description="Client-generated UUID, used only for analytics — never for state lookup"
+    )
+
+    @field_validator('user_lat')
+    @classmethod
+    def validate_latitude(cls, v):
+        if v is not None and not (-90 <= v <= 90):
+            raise ValueError('Latitude must be between -90 and 90')
+        return v
+
+    @field_validator('user_lon')
+    @classmethod
+    def validate_longitude(cls, v):
+        if v is not None and not (-180 <= v <= 180):
+            raise ValueError('Longitude must be between -180 and 180')
+        return v
+
+    @field_validator('max_distance_km')
+    @classmethod
+    def validate_distance(cls, v):
+        if not (1 <= v <= 20):
+            raise ValueError('max_distance_km must be between 1 and 20')
+        return v
+
+
+class ChatResponse(BaseModel):
+    """
+    Response from /api/chat. The client should replace its local history
+    with `messages` wholesale — don't try to merge or append.
+    """
+    messages: List[Dict[str, Any]] = Field(..., description="Updated full conversation history")
+    reply: Optional[str] = Field(None, description="Latest assistant text reply, for convenience") 

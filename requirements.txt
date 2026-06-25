@@ -1,8 +1,11 @@
 # Core RAG dependencies
 openai>=1.0.0
-streamlit>=1.28.0
 emoji>=2.8.0
-streamlit-geolocation>=0.0.10
+
+# API framework (replaces Streamlit)
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
 
 # Phoenix tracing
 arize-phoenix==12.12.0
@@ -26,5 +29,4 @@ rapidfuzz>=3.0.0
 tqdm>=4.65.0
 python-dotenv>=1.0.0
 requests>=2.31.0
-pytz ==2025.2
-python-dotenv>=1.0.0
+pytz==2025.2

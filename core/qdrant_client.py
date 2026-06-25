@@ -30,16 +30,7 @@ from config import (
     ENHANCED_FEATURES_PATH
 )
 
-
-def get_stopwords():
-    """Get English stopwords (basic set)"""
-    return {
-        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'at', 'for', 'to', 'of', 
-        'on', 'with', 'as', 'by', 'is', 'was', 'are', 'were', 'be', 'been',
-        'has', 'have', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
-        'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those'
-    }
-
+from utils import get_stopwords
 
 def _build_bm25_corpus(all_docs: List[Dict]) -> Tuple[List[List[str]], List[str]]:
     """
