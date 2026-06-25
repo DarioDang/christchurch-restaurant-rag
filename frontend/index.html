@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Christchurch Dining — AI Restaurant Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header__brand">
+        <span class="header__mark">◆</span>
+        <h1 class="header__title">Christchurch Dining</h1>
+      </div>
+      <p class="header__stats" id="stats"></p>
+    </header>
+
+    <main class="chat" id="chat" aria-live="polite"></main>
+
+    <form class="composer" id="composer">
+      <input
+        type="text"
+        id="message-input"
+        class="composer__input"
+        placeholder="Ask about restaurants in Christchurch…"
+        autocomplete="off"
+      />
+      <button type="submit" id="send-btn" class="composer__send" aria-label="Send">→</button>
+    </form>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
