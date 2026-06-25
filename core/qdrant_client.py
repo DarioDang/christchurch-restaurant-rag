@@ -3,6 +3,11 @@ Qdrant Client Initialization and Index Management
 Handles connection, document loading, and BM25 index building
 """
 
+import os
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+import torch
+torch.set_num_threads(1)
 import pandas as pd 
 import string 
 from typing import Dict, List, Tuple

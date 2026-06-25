@@ -1,4 +1,9 @@
-const API_BASE = 'http://localhost:8000'; // change when deploying to Render
+const API_BASE = (() => {
+  const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  return isLocal
+    ? 'http://localhost:8000'
+    : 'https://TODO-your-render-backend-url.onrender.com'; 
+})();
 
 let conversation = [];
 let isStreaming = false;

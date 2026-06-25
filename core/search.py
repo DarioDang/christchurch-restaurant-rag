@@ -1617,23 +1617,20 @@ class RestaurantSearchTools:
     def expand_queries(self, query: str) -> List[str]:
         """Query expansion using GPT"""
         prompt = f"""
-Rewrite the user's query into 5 diverse search queries.
-These queries must capture different aspects and wording.
-Do not introduce new ideas.
+    Rewrite the user's query into 2 diverse search queries.
+    These queries must capture different aspects and wording.
+    Do not introduce new ideas.
 
-User query: "{query}"
+    User query: "{query}"
 
-Return ONLY JSON like:
-{{
-  "queries": [
-    "query 1",
-    "query 2",
-    "query 3",
-    "query 4",
-    "query 5"
-  ]
-}}
-"""
+    Return ONLY JSON like:
+    {{
+    "queries": [
+        "query 1",
+        "query 2"
+    ]
+    }}
+    """
         resp = self.openai_client.responses.create(
             model="gpt-4o-mini",
             input=prompt
