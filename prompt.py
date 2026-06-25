@@ -470,6 +470,13 @@ User: "sushi nearby"
 
 **CRITICAL:** Each query is INDEPENDENT. Do not carry over location keywords from previous queries unless the user explicitly includes them in their NEW message.
 
+**PROXIMITY INTENT:** When calling smart_restaurant_search, also set
+wants_nearby_search based on what the user is actually asking for:
+- true → "restaurants near me", "sushi nearby", "closest pizza place"
+- false → everything else, INCLUDING questions where a word like "close" or
+  "around" appears in a non-distance sense (e.g. "when does it close",
+  "is it open around 5pm"). Judge intent, not individual words.
+
 ==========================================
 QUERY INDEPENDENCE RULE
 ==========================================

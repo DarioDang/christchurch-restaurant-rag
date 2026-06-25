@@ -210,4 +210,36 @@ def parse_tool_arguments(arguments: str) -> Dict[str, Any]:
     return json.loads(arguments)
 
 
-
+smart_search_schema = {
+    "type": "function",
+    "name": "smart_restaurant_search",
+    "description": (
+        "Enhanced hybrid BM25 + Vector search for Christchurch restaurant reviews with Tier 1 filtering. "
+        "Location coordinates and search distance will be automatically provided when needed - "
+        "do not include user_lat, user_lon, or max_distance_km in the call."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "User query about restaurants"
+            },
+            "wants_nearby_search": {
+                "type": "boolean",
+                "description": (
+                    "True ONLY if the user wants results filtered or sorted by physical "
+                    "proximity to their current location — e.g. 'restaurants near me', "
+                    "'sushi nearby', 'closest Italian place', 'within 2km'. "
+                    "False for everything else, including questions that happen to contain "
+                    "words like 'close' or 'around' in a non-distance sense — "
+                    "e.g. 'when does it close today' or 'is it open around 5pm' are NOT "
+                    "proximity requests. Decide based on what the user is actually asking "
+                    "for, not on individual words in the sentence."
+                )
+            }
+        },
+        "required": ["query", "wants_nearby_search"],
+        "additionalProperties": False
+    }
+}

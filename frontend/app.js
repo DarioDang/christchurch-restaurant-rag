@@ -4,8 +4,12 @@ let conversation = [];
 let isStreaming = false;
 let userLocation = { lat: null, lon: null, enabled: false };
 let maxDistanceKm = 5;
+let lastUserQuery = null;
+let autoLocationAttempted = false;
 
+const headerEl = document.getElementById('header');
 const chatEl = document.getElementById('chat');
+const jumpBtn = document.getElementById('jump-btn');
 const formEl = document.getElementById('composer');
 const inputEl = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
@@ -33,11 +37,56 @@ async function init() {
   try {
     const res = await fetch(`${API_BASE}/api/stats`);
     const data = await res.json();
+    statsEl.classList.remove('skeleton');
     statsEl.textContent = `${data.restaurants} restaurants · ${data.reviews.toLocaleString()} reviews`;
   } catch (e) {
+    statsEl.classList.remove('skeleton');
     statsEl.textContent = '';
   }
   loadSuggestions();
+}
+
+// ============================================
+// SCROLL HANDLING
+// ============================================
+
+function isNearBottom() {
+  return chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 100;
+}
+
+function showJumpButton() {
+  jumpBtn.hidden = false;
+}
+function hideJumpButton() {
+  jumpBtn.hidden = true;
+}
+
+function appendToChat(el) {
+  const wasNearBottom = isNearBottom();
+  chatEl.appendChild(el);
+  if (wasNearBottom) {
+    chatEl.scrollTop = chatEl.scrollHeight;
+  } else {
+    showJumpButton();
+  }
+}
+
+function maybeAutoScroll() {
+  if (isNearBottom()) chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+jumpBtn.addEventListener('click', () => {
+  chatEl.scrollTop = chatEl.scrollHeight;
+  hideJumpButton();
+});
+
+chatEl.addEventListener('scroll', () => {
+  headerEl.classList.toggle('header--scrolled', chatEl.scrollTop > 4);
+  if (isNearBottom()) hideJumpButton();
+});
+
+function formatTime(date = new Date()) {
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 // ============================================
@@ -67,6 +116,7 @@ async function loadSuggestions() {
 
   const wrap = document.createElement('div');
   wrap.className = 'suggestions';
+  wrap.innerHTML = `<p class="suggestions__intro">Ask about restaurants, hours, or find something nearby.</p>`;
 
   if (examplesRes.status === 'fulfilled') {
     wrap.appendChild(buildChipSection('Try asking', examplesRes.value.examples, (q) => q));
@@ -121,22 +171,40 @@ function openLocationPanel() {
   locationBtn.setAttribute('aria-expanded', 'true');
 }
 
+function attemptAutoLocation() {
+  acquireLocation()
+    .then(() => {
+      appendSystemNote('📍 Using your location to search again…');
+      if (lastUserQuery) {
+        setTimeout(() => sendMessage(lastUserQuery, { isRetry: true }), 500);
+      }
+    })
+    .catch(() => {
+    });
+}
+
 function closeLocationPanel() {
   locationPanel.classList.remove('location__panel--visible');
   locationBtn.setAttribute('aria-expanded', 'false');
-  setTimeout(() => {
-    locationPanel.hidden = true;
-  }, 160);
+  setTimeout(() => { locationPanel.hidden = true; }, 160);
 }
 
-locationBtn.addEventListener('click', () => {
+locationBtn.addEventListener('click', (e) => {
+  e.stopPropagation(); 
   if (locationPanel.hidden) openLocationPanel();
   else closeLocationPanel();
 });
 
 document.addEventListener('click', (e) => {
-  if (!locationPanel.hidden && !locationPanel.contains(e.target) && e.target !== locationBtn) {
+  if (!locationPanel.hidden && !locationPanel.contains(e.target) && !locationBtn.contains(e.target)) {
     closeLocationPanel();
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !locationPanel.hidden) {
+    closeLocationPanel();
+    locationBtn.focus();
   }
 });
 
@@ -147,25 +215,13 @@ function showDistanceControl() {
 
 function hideDistanceControl() {
   locationDistanceWrap.classList.remove('location__distance--visible');
-  setTimeout(() => {
-    locationDistanceWrap.hidden = true;
-  }, 160);
+  setTimeout(() => { locationDistanceWrap.hidden = true; }, 160);
 }
 
 locationToggle.addEventListener('change', () => {
   if (locationToggle.checked) {
     locationStatus.textContent = 'Requesting location…';
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude, enabled: true };
-        showDistanceControl();
-        locationStatus.textContent = `Location set (±${Math.round(pos.coords.accuracy)}m accuracy)`;
-      },
-      () => {
-        locationToggle.checked = false;
-        locationStatus.textContent = 'Could not get your location. Check browser permissions.';
-      }
-    );
+    acquireLocation().catch(() => { locationToggle.checked = false; });
   } else {
     userLocation = { lat: null, lon: null, enabled: false };
     hideDistanceControl();
@@ -179,30 +235,91 @@ distanceSlider.addEventListener('input', () => {
 });
 
 // ============================================
-// CHAT
+// COMPOSER (auto-resize + Enter/Shift+Enter)
 // ============================================
+
+function autoResizeInput() {
+  inputEl.style.height = 'auto';
+  const contentHeight = inputEl.scrollHeight;
+  const capped = Math.min(contentHeight, 120);
+  inputEl.style.height = capped + 'px';
+  inputEl.style.overflowY = contentHeight > 120 ? 'auto' : 'hidden';
+}
+
+inputEl.addEventListener('input', autoResizeInput);
+
+inputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    formEl.requestSubmit();
+  }
+});
 
 formEl.addEventListener('submit', (e) => {
   e.preventDefault();
   const text = inputEl.value.trim();
   if (!text || isStreaming) return;
   inputEl.value = '';
+  autoResizeInput();
   sendMessage(text);
 });
 
-function sendMessage(text) {
+// ============================================
+// CHAT
+// ============================================
+
+function sendMessage(text, { isRetry = false } = {}) {
+  if (!isRetry) {
+    lastUserQuery = text;
+    autoLocationAttempted = false;
+  }
   clearExamples();
   appendUserBubble(text);
   conversation.push({ role: 'user', content: text });
   streamAssistantReply();
 }
 
+function acquireLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Geolocation not supported'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude, enabled: true };
+        locationToggle.checked = true;
+        showDistanceControl();
+        locationStatus.textContent = `Location set (±${Math.round(pos.coords.accuracy)}m accuracy)`;
+        resolve(userLocation);
+      },
+      (err) => {
+        locationStatus.textContent = 'Could not get your location. Check browser permissions.';
+        reject(err);
+      }
+    );
+  });
+}
+
+function appendSystemNote(text) {
+  const el = document.createElement('div');
+  el.className = 'msg msg--system';
+  el.textContent = text;
+  appendToChat(el);
+}
+
 function appendUserBubble(text) {
+  const group = document.createElement('div');
+  group.className = 'msg-group msg-group--user';
   const bubble = document.createElement('div');
   bubble.className = 'msg msg--user';
   bubble.textContent = text;
-  chatEl.appendChild(bubble);
-  scrollToBottom();
+  const time = document.createElement('span');
+  time.className = 'msg__time';
+  time.textContent = formatTime();
+  group.appendChild(bubble);
+  group.appendChild(time);
+  appendToChat(group);
 }
 
 function showThinkingIndicator() {
@@ -210,8 +327,7 @@ function showThinkingIndicator() {
   el.className = 'thinking';
   el.id = 'thinking-indicator';
   el.innerHTML = '<span class="thinking__dot"></span><span class="thinking__dot"></span><span class="thinking__dot"></span>';
-  chatEl.appendChild(el);
-  scrollToBottom();
+  appendToChat(el);
   return el;
 }
 
@@ -221,11 +337,13 @@ function removeThinkingIndicator() {
 }
 
 function createAssistantBubble() {
+  const group = document.createElement('div');
+  group.className = 'msg-group msg-group--assistant';
   const bubble = document.createElement('div');
   bubble.className = 'msg msg--assistant';
   bubble.innerHTML = '<span class="msg__cursor"></span>';
-  chatEl.appendChild(bubble);
-  scrollToBottom();
+  group.appendChild(bubble);
+  appendToChat(group);
   return bubble;
 }
 
@@ -241,8 +359,7 @@ function createTraceStrip(query) {
     <span>searching</span>
     <span class="trace__query">"${escapeHtml(query)}"</span>
   `;
-  chatEl.appendChild(strip);
-  scrollToBottom();
+  appendToChat(strip);
   return strip;
 }
 
@@ -253,6 +370,7 @@ function finishTraceStrip(strip, mode, count) {
     <span>found</span>
     <span class="trace__query">${count} result${count === 1 ? '' : 's'} · ${mode}</span>
   `;
+  maybeAutoScroll();
 }
 
 function setStreaming(state) {
@@ -270,6 +388,7 @@ async function streamAssistantReply() {
   let traceStrip = null;
   let buffer = '';
   let firstEventReceived = false;
+  let pendingLocationRetry = false;
 
   function clearThinkingOnce() {
     if (!firstEventReceived) {
@@ -327,11 +446,15 @@ async function streamAssistantReply() {
       traceStrip = createTraceStrip(event.query);
     } else if (event.type === 'tool_call_end') {
       if (traceStrip) finishTraceStrip(traceStrip, event.mode, event.result_count);
+      if (event.mode === 'location_required' && !userLocation.enabled && !autoLocationAttempted) {
+        autoLocationAttempted = true;
+        pendingLocationRetry = true;
+      }
     } else if (event.type === 'text_delta') {
       if (!assistantBubble) assistantBubble = createAssistantBubble();
       assistantRawText += event.content;
       renderAssistantText(assistantBubble, assistantRawText);
-      scrollToBottom();
+      maybeAutoScroll();
     } else if (event.type === 'error') {
       appendSystemError(event.detail || 'Something went wrong.');
     } else if (event.type === 'done') {
@@ -341,8 +464,18 @@ async function streamAssistantReply() {
         const cursor = assistantBubble.querySelector('.msg__cursor');
         if (cursor) cursor.remove();
         assistantBubble.classList.add('msg--complete');
+        const group = assistantBubble.parentElement;
+        const time = document.createElement('span');
+        time.className = 'msg__time';
+        time.textContent = formatTime();
+        group.appendChild(time);
       }
     }
+  }
+
+  if (pendingLocationRetry) {
+    pendingLocationRetry = false;
+    attemptAutoLocation();
   }
 }
 
@@ -350,10 +483,5 @@ function appendSystemError(text) {
   const el = document.createElement('div');
   el.className = 'msg msg--error';
   el.textContent = text;
-  chatEl.appendChild(el);
-  scrollToBottom();
-}
-
-function scrollToBottom() {
-  chatEl.scrollTop = chatEl.scrollHeight;
+  appendToChat(el);
 }

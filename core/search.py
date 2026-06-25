@@ -1794,6 +1794,7 @@ User question: "{query}"
     def smart_restaurant_search(
         self,
         query: str,
+        wants_nearby_search: Optional[bool] = None,
         use_cache: bool = True,
         user_lat: Optional[float] = None,
         user_lon: Optional[float] = None,
@@ -1804,7 +1805,9 @@ User question: "{query}"
         # -------------------------------------------------
         # STEP 1: Location intent (SINGLE entry point)
         # -------------------------------------------------
-        location_intent = detect_location_intent(query, user_max_distance_km=max_distance_km)
+        location_intent = detect_location_intent(
+            query, user_max_distance_km=max_distance_km, llm_says_nearby=wants_nearby_search
+        )
 
         if location_intent["is_location_query"]:
             if user_lat is None or user_lon is None:

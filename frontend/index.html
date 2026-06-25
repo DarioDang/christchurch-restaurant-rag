@@ -11,44 +11,48 @@
 </head>
 <body>
   <div class="app">
-    <header class="header">
-        <div class="header__brand">
-            <span class="header__mark">◆</span>
-            <h1 class="header__title">Christchurch Dining</h1>
-        </div>
-        <div class="header__right">
-            <p class="header__stats" id="stats"></p>
-            <div class="location">
-            <button type="button" id="location-btn" class="location__btn" aria-label="Location settings" aria-expanded="false">📍</button>
-            <div class="location__panel" id="location-panel" hidden>
-                <p class="location__header">Location</p>
-                <label class="location__row" for="location-toggle">
-                    <span>Use my location</span>
-                    <span class="toggle">
-                    <input type="checkbox" id="location-toggle" class="toggle__input" />
-                    <span class="toggle__track"><span class="toggle__thumb"></span></span>
-                    </span>
-                </label>
-                <div class="location__distance" id="location-distance" hidden>
-                    <label for="distance-slider">Search radius: <span id="distance-value">5</span>km</label>
-                    <input type="range" id="distance-slider" min="1" max="20" step="1" value="5" />
-                </div>
-                <p class="location__status" id="location-status"></p>
+    <header class="header" id="header">
+      <div class="header__brand">
+        <img src="static/header-icon.png" alt="" class="header__mark" />
+        <h1 class="header__title">Christchurch Dining AI Agent</h1>
+      </div>
+      <div class="header__right">
+        <p class="header__stats skeleton" id="stats">&nbsp;</p>
+        <div class="location">
+          <button type="button" id="location-btn" class="location__btn" aria-label="Location settings" aria-expanded="false">
+            <img src="static/location-icon.png" alt="" class="location__icon" />
+          </button>
+          <div class="location__panel" id="location-panel" hidden>
+            <p class="location__header">Location</p>
+            <label class="location__row" for="location-toggle">
+              <span>Use my location</span>
+              <span class="toggle">
+                <input type="checkbox" id="location-toggle" class="toggle__input" />
+                <span class="toggle__track"><span class="toggle__thumb"></span></span>
+              </span>
+            </label>
+            <div class="location__distance" id="location-distance" hidden>
+              <label for="distance-slider">Search radius: <span id="distance-value">5</span>km</label>
+              <input type="range" id="distance-slider" min="1" max="20" step="1" value="5" />
             </div>
-            </div>
+            <p class="location__status" id="location-status"></p>
+          </div>
         </div>
+      </div>
     </header>
 
-    <main class="chat" id="chat" aria-live="polite"></main>
+    <div class="chat-wrap">
+      <main class="chat" id="chat" aria-live="polite"></main>
+      <button type="button" id="jump-btn" class="jump-btn" hidden>↓ New message</button>
+    </div>
 
     <form class="composer" id="composer">
-      <input
-        type="text"
+      <textarea
         id="message-input"
         class="composer__input"
+        rows="1"
         placeholder="Ask about restaurants in Christchurch…"
-        autocomplete="off"
-      />
+      ></textarea>
       <button type="submit" id="send-btn" class="composer__send" aria-label="Send">→</button>
     </form>
   </div>

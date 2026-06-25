@@ -55,25 +55,32 @@ def get_distance_category(distance_km: float) -> str:
         return "Further away (> 5km)"
     
 
-def detect_location_intent(query: str, user_max_distance_km: Optional[float] = None) -> Dict[str, any]:
+def detect_location_intent(
+    query: str,
+    user_max_distance_km: Optional[float] = None,
+    llm_says_nearby: Optional[bool] = None,
+) -> Dict[str, any]:
     """
     Detect location-based intent in queries.
-    
-    SIMPLIFIED LOGIC:
-    - Keywords ONLY trigger location mode (don't set distance)
-    - Distance comes from user's slider setting
-    - If no slider value, use sensible default (5km)
-    
+
+    AUTHORITATIVE SOURCE: llm_says_nearby, when provided, is trusted directly —
+    the model has full conversational understanding and correctly disambiguates
+    cases a keyword list cannot (e.g. "when does it close" vs "restaurants close
+    by"). Keyword matching below is kept only as a fallback for callers that
+    don't supply this (e.g. legacy code paths), and is known to be imprecise
+    for exactly this reason — do not treat it as reliable on its own.
+
     Args:
         query: User search query
-        user_max_distance_km: User's slider setting (takes priority)
-    
+        user_max_distance_km: User's slider setting (takes priority for radius)
+        llm_says_nearby: Explicit proximity-intent decision from the LLM via
+            the smart_restaurant_search tool's wants_nearby_search parameter
+
     Returns:
         Dictionary with location intent details
     """
     query_lower = query.lower().strip()
 
-    # Default: NO location intent
     location_intent = {
         'is_location_query': False,
         'needs_user_location': False,
@@ -83,11 +90,7 @@ def detect_location_intent(query: str, user_max_distance_km: Optional[float] = N
         'distance_source': None
     }
 
-    # ========================================
-    # STEP 1: Simple location keyword detection
-    # ========================================
-    
-    # Simple list of location trigger words
+    # Fallback keyword detection (used only when llm_says_nearby is None)
     location_keywords = [
         'nearby', 'near me', 'near', 'close by', 'close to me',
         'around me', 'around here', 'around', 'local', 'in the area',
@@ -98,20 +101,14 @@ def detect_location_intent(query: str, user_max_distance_km: Optional[float] = N
         'near my place', 'close to my place',
         'within', 'from here', 'from me'
     ]
-    
     matched_keywords = [kw for kw in location_keywords if kw in query_lower]
 
-    # ========================================
-    # STEP 2: Check for explicit distance (e.g., "within 3km")
-    # ========================================
-    
     distance_patterns = [
         r'within (\d+(?:\.\d+)?)\s*(?:km|kilometers?)',
         r'(\d+(?:\.\d+)?)\s*(?:km|kilometers?) away',
         r'less than (\d+(?:\.\d+)?)\s*(?:km|kilometers?)',
         r'under (\d+(?:\.\d+)?)\s*(?:km|kilometers?)'
     ]
-
     explicit_distance = None
     for pattern in distance_patterns:
         match = re.search(pattern, query_lower)
@@ -119,39 +116,30 @@ def detect_location_intent(query: str, user_max_distance_km: Optional[float] = N
             explicit_distance = float(match.group(1))
             break
 
-    # ========================================
-    # STEP 3: DECISION LOGIC (Slider-First!)
-    # ========================================
-    
-    if matched_keywords or explicit_distance:
-        # Location keywords or explicit distance detected
+    # DECISION: trust the LLM's explicit signal when given, else fall back
+    if llm_says_nearby is not None:
+        is_location_query = llm_says_nearby
+    else:
+        is_location_query = bool(matched_keywords or explicit_distance)
+
+    if is_location_query:
         location_intent['is_location_query'] = True
         location_intent['needs_user_location'] = True
         location_intent['location_keywords'] = matched_keywords
-        
-        # PRIORITY ORDER:
-        # 1. User's slider (HIGHEST PRIORITY)
-        # 2. Explicit distance in query ("within 3km")
-        # 3. Default fallback (5km)
-        
+
         if user_max_distance_km is not None:
-            # ✅ User set slider - USE IT!
             location_intent['radius_km'] = user_max_distance_km
             location_intent['distance_source'] = 'user_slider'
             print(f"🎯 Using slider distance: {user_max_distance_km}km")
-        
         elif explicit_distance:
-            # Query has "within Xkm"
             location_intent['radius_km'] = explicit_distance
             location_intent['distance_source'] = 'query_explicit'
             print(f"📏 Using query distance: {explicit_distance}km")
-        
         else:
-            # No slider, no explicit distance → default
             location_intent['radius_km'] = 5.0
             location_intent['distance_source'] = 'default'
             print(f"📍 Using default distance: 5km")
-    
+
     return location_intent
 
 
