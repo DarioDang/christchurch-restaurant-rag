@@ -48,3 +48,6 @@ build_index.py
 
 # add tests script
 tests/test_stream.py
+
+# reject the local txt script
+command-line-run-local.txt
