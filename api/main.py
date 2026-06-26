@@ -23,6 +23,7 @@ from api.tools import Tools, smart_search_schema
 from models.schemas import ChatRequest, ChatResponse 
 from utils.analytics import get_analytics
 from fastapi.responses import StreamingResponse
+from opentelemetry import trace as trace_api
 import logging
 logging.basicConfig(
     level=logging.INFO,
@@ -32,6 +33,8 @@ logger = logging.getLogger(__name__)
 client = OpenAI()
 MAX_TOOL_ITERATIONS = 5 # safely cap - see note below 
 import re
+
+
 
 def _check_distance_hallucination(reply: str, tool_output_json: str) -> bool:
     """
@@ -151,173 +154,195 @@ def _stream_chat_turn(request: ChatRequest):
     except Exception:
         logger.warning("Analytics logging failed", exc_info=True)
 
-    with tracer.start_as_current_span("assistant-turn", openinference_span_kind="chain") as chain_span:
-        user_input = history[-1].get("content", "") if history else ""
-        chain_span.set_attribute("input.value", str(user_input))
+    # NOTE: chain_span is created via start_span(), not start_as_current_span(),
+    # because its lifetime spans multiple `yield` statements below. See the
+    # docstring on TracerWrapper.start_span for why this matters.
+    chain_span = tracer.start_span("assistant-turn", openinference_span_kind="chain")
+    chain_ctx = trace_api.set_span_in_context(chain_span)
 
-        assistant_message = ""
-        last_tool_output = None
+    user_input = history[-1].get("content", "") if history else ""
+    chain_span.set_attribute("input.value", str(user_input))
 
-        try:
-            iteration = 0
-            while True:
-                iteration += 1
-                if iteration > MAX_TOOL_ITERATIONS:
-                    logger.warning("Hit MAX_TOOL_ITERATIONS (%s)", MAX_TOOL_ITERATIONS)
-                    break
+    assistant_message = ""
+    last_tool_output = None
 
-                with tracer.start_as_current_span("Responses.create", openinference_span_kind="llm") as llm_span:
-                    tools_available = chat_tools.get_tools()
-                    llm_span.set_attribute("llm.input", str(history))
-                    llm_span.set_attribute("llm.model_name", OPENAI_CHAT_MODEL)
-                    llm_span.set_attribute("llm.tools.count", len(tools_available))
+    try:
+        iteration = 0
+        while True:
+            iteration += 1
+            if iteration > MAX_TOOL_ITERATIONS:
+                logger.warning("Hit MAX_TOOL_ITERATIONS (%s)", MAX_TOOL_ITERATIONS)
+                break
 
-                    stream = client.responses.create(
-                        model=OPENAI_CHAT_MODEL,
-                        input=history,
-                        tools=tools_available,
-                        stream=True,
-                        max_output_tokens=1500,
-                    )
+            # Same reasoning as chain_span: this span's lifetime spans the
+            # text_delta / tool_call_start / tool_call_end yields below.
+            llm_span = tracer.start_span(
+                "Responses.create", openinference_span_kind="llm", context=chain_ctx
+            )
+            llm_ctx = trace_api.set_span_in_context(llm_span)
 
-                    final_response = None
-                    turn_text = ""
+            try:
+                tools_available = chat_tools.get_tools()
+                llm_span.set_attribute("llm.input", str(history))
+                llm_span.set_attribute("llm.model_name", OPENAI_CHAT_MODEL)
+                llm_span.set_attribute("llm.tools.count", len(tools_available))
 
-                    for event in stream:
-                        # NOTE: if no text_delta events appear during testing,
-                        # log event.type here to confirm the exact strings
-                        # your installed openai SDK version emits.
-                        if event.type == "response.output_text.delta":
-                            turn_text += event.delta
-                            yield _sse({"type": "text_delta", "content": event.delta})
-                        elif event.type in ("response.completed", "response.incomplete"):
-                            final_response = event.response
-                            if event.type == "response.incomplete":
-                                reason = getattr(event.response, "incomplete_details", None)
-                                logger.warning("Response marked incomplete (reason=%s) — using partial output", reason)
-                        elif event.type in ("response.failed", "error"):
-                            logger.error("OpenAI stream error event: %s", event)
-                            yield _sse({"type": "error", "detail": "The model encountered an error."})
-                            chain_span.set_status(Status(StatusCode.ERROR))
-                            return
-                        else:
-                            logger.debug("Unhandled stream event type: %s", event.type)
+                stream = client.responses.create(
+                    model=OPENAI_CHAT_MODEL,
+                    input=history,
+                    tools=tools_available,
+                    stream=True,
+                    max_output_tokens=1500,
+                )
 
-                    if final_response is None:
-                        logger.error("Stream ended without response.completed event")
-                        yield _sse({"type": "error", "detail": "Incomplete response from the model."})
+                final_response = None
+                turn_text = ""
+
+                for event in stream:
+                    if event.type == "response.output_text.delta":
+                        turn_text += event.delta
+                        yield _sse({"type": "text_delta", "content": event.delta})
+                    elif event.type in ("response.completed", "response.incomplete"):
+                        final_response = event.response
+                        if event.type == "response.incomplete":
+                            reason = getattr(event.response, "incomplete_details", None)
+                            logger.warning("Response marked incomplete (reason=%s) — using partial output", reason)
+                    elif event.type in ("response.failed", "error"):
+                        logger.error("OpenAI stream error event: %s", event)
+                        yield _sse({"type": "error", "detail": "The model encountered an error."})
                         chain_span.set_status(Status(StatusCode.ERROR))
                         return
+                    else:
+                        logger.debug("Unhandled stream event type: %s", event.type)
 
-                    response = final_response
-                    tool_called = False
+                if final_response is None:
+                    logger.error("Stream ended without response.completed event")
+                    yield _sse({"type": "error", "detail": "Incomplete response from the model."})
+                    chain_span.set_status(Status(StatusCode.ERROR))
+                    return
 
-                    for entry in response.output:
-                        if entry.type == "function_call":
-                            tool_called = True
-                            history.append({
-                                "type": "function_call",
-                                "call_id": entry.call_id,
-                                "name": entry.name,
-                                "arguments": entry.arguments,
-                            })
+                response = final_response
+                tool_called = False
 
-                            tool_args = json.loads(entry.arguments)
-                            tool_args = _inject_location(
-                                tool_args, request.user_lat, request.user_lon, request.max_distance_km
-                            )
+                for entry in response.output:
+                    if entry.type == "function_call":
+                        tool_called = True
+                        history.append({
+                            "type": "function_call",
+                            "call_id": entry.call_id,
+                            "name": entry.name,
+                            "arguments": entry.arguments,
+                        })
 
-                            yield _sse({
-                                "type": "tool_call_start",
-                                "name": entry.name,
-                                "query": tool_args.get("query", ""),
-                            })
+                        tool_args = json.loads(entry.arguments)
+                        tool_args = _inject_location(
+                            tool_args, request.user_lat, request.user_lon, request.max_distance_km
+                        )
 
-                            with tracer.start_as_current_span(
-                                "smart_restaurant_search", openinference_span_kind="tool"
-                            ) as tool_span:
-                                tool_span.set_attribute("tool.name", "smart_restaurant_search")
-                                tool_span.set_attribute("input.value", json.dumps(tool_args))
-                                tool_span.set_attribute("input.mime_type", "application/json")
+                        yield _sse({
+                            "type": "tool_call_start",
+                            "name": entry.name,
+                            "query": tool_args.get("query", ""),
+                        })
 
-                                if request.user_lat is not None and request.user_lon is not None:
-                                    tool_span.set_attribute("location.latitude", float(request.user_lat))
-                                    tool_span.set_attribute("location.longitude", float(request.user_lon))
-                                    tool_span.set_attribute("location.enabled", True)
-                                    tool_span.set_attribute("location.city", "Christchurch")
-                                    tool_span.set_attribute("location.country", "New Zealand")
-
-                                shim = _ToolCallShim(
-                                    call_id=entry.call_id,
-                                    name=entry.name,
-                                    arguments=json.dumps(tool_args),
-                                )
-                                result = chat_tools.function_call(shim)
-
-                                tool_span.set_attribute("output.value", result["output"])
-                                tool_span.set_attribute("output.mime_type", "application/json")
-
-                            last_tool_output = result["output"]
+                        # tool_span does NOT cross a yield internally (the
+                        # tool call below is fully synchronous), so it's safe
+                        # to use start_as_current_span here — it just needs
+                        # an EXPLICIT parent, since llm_span is no longer the
+                        # ambient "current span" the way it would've been
+                        # under the old context-manager pattern.
+                        with tracer.start_as_current_span(
+                            "smart_restaurant_search",
+                            openinference_span_kind="tool",
+                            context=llm_ctx,
+                        ) as tool_span:
+                            tool_span.set_attribute("tool.name", "smart_restaurant_search")
+                            tool_span.set_attribute("input.value", json.dumps(tool_args))
+                            tool_span.set_attribute("input.mime_type", "application/json")
 
                             if request.user_lat is not None and request.user_lon is not None:
-                                llm_span.set_attribute("user_lat", float(request.user_lat))
-                                llm_span.set_attribute("user_lon", float(request.user_lon))
-                                chain_span.set_attribute("user_lat", float(request.user_lat))
-                                chain_span.set_attribute("user_lon", float(request.user_lon))
+                                tool_span.set_attribute("location.latitude", float(request.user_lat))
+                                tool_span.set_attribute("location.longitude", float(request.user_lon))
+                                tool_span.set_attribute("location.enabled", True)
+                                tool_span.set_attribute("location.city", "Christchurch")
+                                tool_span.set_attribute("location.country", "New Zealand")
 
-                            try:
-                                parsed = json.loads(result["output"])
-                                docs = parsed.get("results", [])
-                                reference_text = "\n\n".join(
-                                    d.get("full_review", "") for d in docs if d.get("full_review")
-                                )
-                                chain_span.set_attribute("reference", reference_text)
-                            except Exception as e:
-                                chain_span.set_attribute("reference_error", str(e))
+                            shim = _ToolCallShim(
+                                call_id=entry.call_id,
+                                name=entry.name,
+                                arguments=json.dumps(tool_args),
+                            )
+                            result = chat_tools.function_call(shim)
 
-                            history.append(result)
+                            tool_span.set_attribute("output.value", result["output"])
+                            tool_span.set_attribute("output.mime_type", "application/json")
 
-                            try:
-                                parsed_for_count = json.loads(result["output"])
-                                result_count = len(parsed_for_count.get("results", []))
-                                mode = parsed_for_count.get("mode", "")
-                            except Exception:
-                                result_count, mode = 0, ""
+                        last_tool_output = result["output"]
 
-                            yield _sse({"type": "tool_call_end", "mode": mode, "result_count": result_count})
+                        if request.user_lat is not None and request.user_lon is not None:
+                            llm_span.set_attribute("user_lat", float(request.user_lat))
+                            llm_span.set_attribute("user_lon", float(request.user_lon))
+                            chain_span.set_attribute("user_lat", float(request.user_lat))
+                            chain_span.set_attribute("user_lon", float(request.user_lon))
 
-                        elif entry.type == "message":
-                            try:
-                                msg = entry.content[0]
-                                assistant_message = getattr(msg, "text", "") or getattr(msg, "refusal", "") or turn_text
-                            except Exception:
-                                assistant_message = turn_text
+                        try:
+                            parsed = json.loads(result["output"])
+                            docs = parsed.get("results", [])
+                            reference_text = "\n\n".join(
+                                d.get("full_review", "") for d in docs if d.get("full_review")
+                            )
+                            chain_span.set_attribute("reference", reference_text)
+                        except Exception as e:
+                            chain_span.set_attribute("reference_error", str(e))
 
-                            if assistant_message:
-                                history.append({
-                                    "role": "assistant",
-                                    "content": [{"type": "output_text", "text": assistant_message}],
-                                })
+                        history.append(result)
 
-                    if assistant_message:
-                        llm_span.set_attribute("llm.output", assistant_message)
-                        chain_span.set_attribute("output.value", assistant_message)
+                        try:
+                            parsed_for_count = json.loads(result["output"])
+                            result_count = len(parsed_for_count.get("results", []))
+                            mode = parsed_for_count.get("mode", "")
+                        except Exception:
+                            result_count, mode = 0, ""
 
-                    if not tool_called:
-                        break
+                        yield _sse({"type": "tool_call_end", "mode": mode, "result_count": result_count})
 
-            chain_span.set_status(Status(StatusCode.OK))
+                    elif entry.type == "message":
+                        try:
+                            msg = entry.content[0]
+                            assistant_message = getattr(msg, "text", "") or getattr(msg, "refusal", "") or turn_text
+                        except Exception:
+                            assistant_message = turn_text
 
-            if last_tool_output and _check_distance_hallucination(assistant_message, last_tool_output):
-                logger.warning("Distance hallucination detected in reply: %s", assistant_message[:200])
-                chain_span.set_attribute("eval.distance_hallucination_detected", True)
+                        if assistant_message:
+                            history.append({
+                                "role": "assistant",
+                                "content": [{"type": "output_text", "text": assistant_message}],
+                            })
 
-        except Exception as e:
-            logger.exception("Error processing chat turn")
-            chain_span.record_exception(e)
-            chain_span.set_status(Status(StatusCode.ERROR))
-            yield _sse({"type": "error", "detail": "Something went wrong processing your message."})
-            return
+                if assistant_message:
+                    llm_span.set_attribute("llm.output", assistant_message)
+                    chain_span.set_attribute("output.value", assistant_message)
+
+                if not tool_called:
+                    break
+            finally:
+                llm_span.end()
+
+        chain_span.set_status(Status(StatusCode.OK))
+
+        if last_tool_output and _check_distance_hallucination(assistant_message, last_tool_output):
+            logger.warning("Distance hallucination detected in reply: %s", assistant_message[:200])
+            chain_span.set_attribute("eval.distance_hallucination_detected", True)
+
+    except Exception as e:
+        logger.exception("Error processing chat turn")
+        chain_span.record_exception(e)
+        chain_span.set_status(Status(StatusCode.ERROR))
+        yield _sse({"type": "error", "detail": "Something went wrong processing your message."})
+        return
+    finally:
+        chain_span.end()
+
     if not assistant_message:
         assistant_message = "I wasn't able to put together a response for that — could you try rephrasing your question?"
     yield _sse({"type": "done", "messages": history, "reply": assistant_message})

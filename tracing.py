@@ -35,6 +35,30 @@ class TracerWrapper:
             attributes['openinference.span.kind'] = openinference_span_kind
         kwargs['attributes'] = attributes
         return self._tracer.start_as_current_span(name, **kwargs)
+    
+    def start_span(self, name, openinference_span_kind=None, **kwargs):
+        """
+        Like start_as_current_span, but does NOT set itself as the ambient
+        'current span' via contextvars, and does NOT auto-close on a 'with'
+        block exit — caller must call span.end() explicitly.
+
+        Use this for spans whose lifetime spans multiple `yield` statements
+        in a streaming generator (e.g. assistant-turn, Responses.create).
+        Starlette's StreamingResponse can resume a sync generator on a
+        different worker-pool thread after each yield; contextvars-based
+        context propagation (what start_as_current_span relies on) does not
+        reliably survive that thread hop, which silently drops/orphans any
+        child spans created via start_as_current_span() afterward.
+
+        Spans created with start_span() must have their parent passed
+        explicitly via context=trace.set_span_in_context(parent_span) when
+        creating children, rather than relying on ambient context.
+        """
+        attributes = kwargs.get('attributes', {})
+        if openinference_span_kind:
+            attributes['openinference.span.kind'] = openinference_span_kind
+        kwargs['attributes'] = attributes
+        return self._tracer.start_span(name, **kwargs)
 
     def tool(self, name: str = None, description: str = None):
         def decorator(func):
@@ -93,6 +117,12 @@ tracer = setup_phoenix_tracing()
 if tracer is None:
     print("⚠️ Using dummy tracer (tracing disabled)")
 
+    class DummySpan:
+        def set_attribute(self, *a, **kw): pass
+        def record_exception(self, *a, **kw): pass
+        def set_status(self, *a, **kw): pass
+        def end(self, *a, **kw): pass
+
     class DummyTracer:
         def start_as_current_span(self, *args, **kwargs):
             from contextlib import contextmanager
@@ -104,6 +134,9 @@ if tracer is None:
                     def set_status(self, *a, **kw): pass
                 yield DummySpan()
             return dummy_span()
+        
+        def start_span(self, *args, **kwargs):
+            return DummySpan()
 
         def tool(self, *args, **kwargs):
             def decorator(func):

@@ -51,3 +51,4 @@ tests/test_stream.py
 
 # reject the local txt script
 command-line-run-local.txt
+env-vars.yaml

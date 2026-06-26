@@ -53,3 +53,16 @@ docker-compose.override.yml
 
 # Don't ignore data folder (we need it)
 !data/
+
+.git
+.venv
+venv
+rag-restaurants/
+__pycache__/
+*.pyc
+.env
+logs/
+.streamlit/
+docker/Dockerfile.streamlit
+docker/Dockerfile.worker
+data/qdrant_storage/
