@@ -1,9 +1,14 @@
 services:
   # ============================================
-  # 1. Phoenix - Observability Server
+  # 1. Phoenix - Local Observability (dev only)
   # ============================================
+  # This is a SEPARATE, self-hosted Phoenix instance for local docker-compose
+  # development — isolated from Phoenix Cloud (used in production on Cloud Run,
+  # configured via .env's PHOENIX_API_KEY / PHOENIX_COLLECTOR_ENDPOINT pointing
+  # at app.phoenix.arize.com). Running locally here means local test traces
+  # never touch the cloud project.
   phoenix:
-    image: arizephoenix/phoenix:12.12.0
+    image: arizephoenix/phoenix:latest
     container_name: phoenix
     ports:
       - "6006:6006"   # UI + HTTP collector
@@ -15,88 +20,51 @@ services:
       - rag-network
 
   # ============================================
-  # 2. Streamlit - Chat UI 
+  # 2. API - FastAPI Backend
   # ============================================
-  streamlit:
+  api:
     build:
       context: .
-      dockerfile: docker/Dockerfile.streamlit
-    container_name: streamlit
+      dockerfile: Dockerfile
+    container_name: restaurant-rag-api
     ports:
-      - "8501:8501"
+      - "8000:8000"
+    env_file:
+      - .env
     environment:
-      # OpenAI
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      
-      # Phoenix
+      # Override .env's Phoenix Cloud settings to point at the local
+      # self-hosted Phoenix container instead, for local dev only.
+      - PORT=8000
       - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006/v1/traces
-      - PHOENIX_CLIENT_ENDPOINT=http://phoenix:6006
-      - PHOENIX_PROJECT_NAME=restaurant-rag-project
-      
-      # QDRANT CLOUD 
-      - USE_QDRANT_CLOUD=true
-      - QDRANT_URL=${QDRANT_URL}
-      - QDRANT_API_KEY=${QDRANT_API_KEY}
-      - COLLECTION_NAME=christchurch_restaurants
-      
     volumes:
-      # Refactored modules
-      - ./config:/app/config
-      - ./core:/app/core
-      - ./utils:/app/utils
-      - ./models:/app/models
-      - ./api:/app/api
-      - ./evaluation:/app/evaluation
-      - ./tracing.py:/app/tracing.py
-      - ./tools.py:/app/tools.py
-      - ./prompt.py:/app/prompt.py
-      - ./chat.py:/app/chat.py
-      - ./data:/app/data
+      # Bind-mount source for live --reload during local dev. Production
+      # (Cloud Run) builds a fresh immutable image from the Dockerfile and
+      # never uses this volume or --reload.
+      - .:/app
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       - phoenix
     restart: unless-stopped
     networks:
       - rag-network
-    command: streamlit run chat.py --server.address=0.0.0.0
 
   # ============================================
-  # 3. Evaluation Worker (Refactored)
+  # 3. Evaluation Worker
   # ============================================
   eval-worker:
     build:
       context: .
       dockerfile: docker/Dockerfile.worker
     container_name: eval-worker
+    env_file:
+      - .env
     environment:
-      # OpenAI
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      
-      # Phoenix
-      - PHOENIX_CLIENT_ENDPOINT=http://phoenix:6006
-      - PHOENIX_PROJECT_NAME=restaurant-rag-project
-      
-      # ✅ QDRANT CLOUD (NEW!)
-      - USE_QDRANT_CLOUD=true
-      - QDRANT_URL=${QDRANT_URL}
-      - QDRANT_API_KEY=${QDRANT_API_KEY}
-      - COLLECTION_NAME=christchurch_restaurants
-      
+      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006/v1/traces
     volumes:
-      # Refactored modules
-      - ./config:/app/config
-      - ./core:/app/core
-      - ./utils:/app/utils
-      - ./models:/app/models
-      - ./api:/app/api
-      - ./evaluation:/app/evaluation
-      - ./tracing.py:/app/tracing.py
-      - ./tools.py:/app/tools.py
       - ./data:/app/data
       - checkpoint-data:/checkpoint
     depends_on:
       - phoenix
-      - streamlit
-      # ❌ REMOVED: qdrant dependency
     restart: unless-stopped
     networks:
       - rag-network
@@ -117,4 +85,3 @@ volumes:
     driver: local
   checkpoint-data:
     driver: local
-
