@@ -2,7 +2,7 @@ const API_BASE = (() => {
   const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
   return isLocal
     ? 'http://localhost:8000'
-    : 'https://TODO-your-render-backend-url.onrender.com'; 
+    : 'https://restaurant-rag-api-687671202987.australia-southeast1.run.app'; 
 })();
 
 let conversation = [];
