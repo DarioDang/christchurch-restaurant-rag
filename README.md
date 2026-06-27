@@ -60,39 +60,23 @@ The dataset is Google Maps / review data for Christchurch restaurants,
 embedded and indexed into Qdrant Cloud.
 
 ## Architecture
+
+```mermaid
+flowchart TB
+    FE["🖥️ Static Frontend<br/>HTML / CSS / JS — no framework<br/>hosted on Netlify"]
+    API["⚙️ FastAPI Backend<br/>hosted on Cloud Run<br/>• Stateless chat API<br/>• Tool-calling loop<br/>• Hybrid search routing"]
+    Qdrant["🔍 Qdrant Cloud<br/>BM25 + vector<br/>hybrid search"]
+    OpenAI["🤖 OpenAI API<br/>gpt-4o-mini<br/>Responses API, streaming"]
+    Phoenix["📊 Phoenix Cloud<br/>OpenTelemetry tracing"]
+
+    FE <-- "HTTPS / SSE (streamed events)" --> API
+    API --> Qdrant
+    API --> OpenAI
+    API --> Phoenix
 ```
-┌─────────────────┐      HTTPS / SSE       ┌──────────────────────┐
 
-│  Static Frontend │ ─────────────────────▶ │   FastAPI Backend     │
-
-│  (HTML/CSS/JS,   │ ◀───────────────────── │   (Cloud Run)         │
-
-│  no framework)   │   streamed events      │                       │
-
-│  Netlify         │                        │  - Stateless chat API │
-
-└─────────────────┘                        │  - Tool-calling loop  │
-
-│  - Hybrid search      │
-
-└──────────┬────────────┘
-
-│
-
-┌───────────────────────────────┼────────────────────┐
-
-▼                               ▼                    ▼
-
-┌────────────────┐           ┌──────────────────┐   ┌──────────────────┐
-
-│  Qdrant Cloud  │           │   OpenAI API      │   │  Phoenix Cloud    │
-
-│  BM25 + vector │           │  gpt-4o-mini      │   │  (OpenTelemetry   │
-
-│  hybrid search │           │  Responses API    │   │  tracing)         │
-
-└────────────────┘           └──────────────────┘   └──────────────────┘
-```
+The frontend never talks to Qdrant, OpenAI, or Phoenix directly — it only
+calls the FastAPI backend, which owns all secrets and all retrieval logic.
 
 The frontend never talks to Qdrant, OpenAI, or Phoenix directly — it only
 calls the FastAPI backend, which owns all secrets and all retrieval logic.
