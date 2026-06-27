@@ -171,6 +171,23 @@ passing — confirmed fixed by checking the resulting trace tree showed full
 nesting (`assistant-turn → Responses.create → smart_restaurant_search →
 retrieve`).
 
+**Silent data loss from a pandas/parquet `isinstance` gotcha.**
+`/api/stats` reported `0` cuisines despite cuisine-based search visibly
+working in practice — a coincidence masked by a separate fallback metadata
+column doing the real filtering underneath. Root cause: `build_index.py`
+checked `cuisines` and `types_normalized` — both list-typed parquet
+columns — with `isinstance(value, list)` before including them in the
+upload. pandas/pyarrow frequently deserializes list-typed parquet columns
+as **numpy arrays**, not native Python lists, so `isinstance(array, list)`
+silently evaluates to `False`, discarding real, populated data on every
+single row. Confirmed by scrolling the live Qdrant payload directly
+(`"cuisines": []` despite the source parquet holding real values), then
+fixed with a small `to_list()` helper that explicitly handles
+`np.ndarray` before falling back to the standard list check. Re-indexed
+and verified end-to-end: `cuisines_detected` now correctly populates in
+live API responses (e.g. `["Japanese", "Sushi"]` for a "best sushi" query,
+previously always `[]`).
+
 **Memory-constrained cloud deployment, debugged with evidence, not
 guesses.** The backend loads two transformer models into memory
 (`all-mpnet-base-v2` + a cross-encoder), which made fitting it onto
@@ -336,10 +353,6 @@ python build_index.py
 
 Documented honestly rather than hidden — these are the gaps I'm aware of:
 
-- **`cuisines` field returns empty** (`/api/stats` reports 0 cuisines)
-  despite cuisine-based filtering working via keyword detection on review
-  text. This points to a data-ingestion gap in how the `cuisines` payload
-  field gets populated for some/all documents — tracked, not yet fixed.
 - **No explicit user feedback mechanism** (thumbs up/down on responses) —
   usage is tracked via query analytics, but response *quality* feedback
   isn't yet collected from end users.
