@@ -24,6 +24,7 @@ from models.schemas import ChatRequest, ChatResponse
 from utils.analytics import get_analytics
 from fastapi.responses import StreamingResponse
 from opentelemetry import trace as trace_api
+from config import OPENAI_CHAT_MODEL, COLLECTION_NAME
 import logging
 logging.basicConfig(
     level=logging.INFO,
@@ -397,6 +398,20 @@ async def popular():
 
     return {"trending": trending, "show_count": show_count, "stats": stats_data}
 
+@app.get("/api/keepalive")
+async def keepalive():
+    """
+    Makes one real, cheap, read-only call to Qdrant Cloud — distinct from
+    /api/health, which is a pure liveness check with no dependencies.
+    Intended to be pinged on a schedule (e.g. UptimeRobot) to prevent
+    Qdrant's free-tier inactivity suspension (1 week) / deletion (4 weeks).
+    """
+    si = _require_search_instance(app)
+    try:
+        si.client.get_collection(collection_name=COLLECTION_NAME)
+        return {"status": "ok", "qdrant": "reachable"}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Qdrant unreachable: {e}")
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])
 async def health():
