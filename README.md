@@ -8,6 +8,8 @@ notebook demo.
 **🔗 Live demo:** https://chc-foodie-agent.netlify.app <br>
 **🔗 API docs (Swagger UI):** https://restaurant-rag-api-687671202987.australia-southeast1.run.app/docs
 
+![CHRISTCHURCH RAG AGENT](./frontend/static/project-theme.svg)
+
 > ⏱️ **First message may take 20–30 seconds.** The backend runs on Cloud
 > Run's scale-to-zero tier — if it's been idle, the first request triggers a
 > cold start (loading two ML models + building a search index from scratch).
