@@ -56,6 +56,61 @@
       ></textarea>
       <button type="submit" id="send-btn" class="composer__send" aria-label="Send">→</button>
     </form>
+    <footer class="site-footer">
+      <div class="pipeline">
+        <div class="pipeline__stage" title="Natural language, multi-turn context">
+          <span class="pipeline__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 11.5a8.5 8.5 0 1 1-3.8-7.1M21 4v6h-6"/></svg></span>
+          <span class="pipeline__title">Your Question</span>
+        </div>
+
+        <span class="pipeline__arrow" aria-hidden="true"><span class="pipeline__track"></span><span class="pipeline__pulse"></span></span>
+
+        <div class="pipeline__stage" title="BM25 + Vector, Qdrant Cloud, RRF fusion">
+          <span class="pipeline__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.8-4.8"/></svg></span>
+          <span class="pipeline__title">Hybrid Search</span>
+        </div>
+
+        <span class="pipeline__arrow" aria-hidden="true"><span class="pipeline__track"></span><span class="pipeline__pulse"></span></span>
+
+        <div class="pipeline__stage" title="Cross-encoder, top candidates to top 5">
+          <span class="pipeline__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2 3 7l9 5 9-5-9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 17l9 5 9-5"/></svg></span>
+          <span class="pipeline__title">Re-ranking</span>
+        </div>
+
+        <span class="pipeline__arrow" aria-hidden="true"><span class="pipeline__track"></span><span class="pipeline__pulse"></span></span>
+
+        <div class="pipeline__stage" title="GPT-4o-mini, tool calling, Cloud Run">
+          <span class="pipeline__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="6" width="12" height="12" rx="1.5"/><path d="M9 1.5v3M15 1.5v3M9 19.5v3M15 19.5v3M1.5 9h3M1.5 15h3M19.5 9h3M19.5 15h3"/></svg></span>
+          <span class="pipeline__title">Reasoning</span>
+        </div>
+
+        <span class="pipeline__arrow" aria-hidden="true"><span class="pipeline__track"></span><span class="pipeline__pulse"></span></span>
+
+        <div class="pipeline__stage" title="Server-Sent Events, grounded in real data">
+          <span class="pipeline__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 2 3 14h7l-1 8 11-13h-7l0-7z"/></svg></span>
+          <span class="pipeline__title">Streamed Answer</span>
+        </div>
+      </div>
+
+      <p class="site-footer__copyright">
+        © 2026 Christchurch Dining AI Agent 
+      </p>
+
+      <div class="site-footer__social">
+        <a href="https://github.com/DarioDang/christchurch-restaurant-rag/tree/main" target="_blank" rel="noopener" aria-label="GitHub">
+          <img src="static/github-icon.png" alt="" />
+        </a>
+        <a href="https://www.linkedin.com/in/dario-dang-89049020a/" target="_blank" rel="noopener" aria-label="LinkedIn">
+          <img src="static/linkedin-icon.png" alt="" />
+        </a>
+        <a href="mailto:DarioDang9999@gmail.com" aria-label="Email">
+          <img src="static/gmail-icon.png" alt="" />
+        </a>
+        <a href="https://dariodang.github.io" target="_blank" rel="noopener" aria-label="Portfolio">
+          <img src="static/portfolio-icon.png" alt="" />
+        </a>
+      </div>
+    </footer>
   </div>
 
   <script src="app.js"></script>
