@@ -60,7 +60,7 @@ The dataset is Google Maps / review data for Christchurch restaurants,
 embedded and indexed into Qdrant Cloud.
 
 ## Architecture
-
+```
 ┌─────────────────┐      HTTPS / SSE       ┌──────────────────────┐
 
 │  Static Frontend │ ─────────────────────▶ │   FastAPI Backend     │
@@ -92,6 +92,7 @@ embedded and indexed into Qdrant Cloud.
 │  hybrid search │           │  Responses API    │   │  tracing)         │
 
 └────────────────┘           └──────────────────┘   └──────────────────┘
+```
 
 The frontend never talks to Qdrant, OpenAI, or Phoenix directly — it only
 calls the FastAPI backend, which owns all secrets and all retrieval logic.
