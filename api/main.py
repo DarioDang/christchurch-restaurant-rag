@@ -398,7 +398,7 @@ async def popular():
 
     return {"trending": trending, "show_count": show_count, "stats": stats_data}
 
-@app.get("/api/keepalive")
+@app.api_route("/api/keepalive", methods=["GET", "HEAD"])
 async def keepalive():
     """
     Makes one real, cheap, read-only call to Qdrant Cloud — distinct from
