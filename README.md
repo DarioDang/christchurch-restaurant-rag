@@ -5,7 +5,7 @@ Christchurch, New Zealand — built end-to-end as an LLM Zoomcamp capstone
 project, then deployed and load-tested like a real product rather than a
 notebook demo.
 
-**🔗 Live demo:** https://chc-foodie-agent.netlify.app
+**🔗 Live demo:** https://chc-foodie-agent.netlify.app <br>
 **🔗 API docs (Swagger UI):** https://restaurant-rag-api-687671202987.australia-southeast1.run.app/docs
 
 > ⏱️ **First message may take 20–30 seconds.** The backend runs on Cloud
