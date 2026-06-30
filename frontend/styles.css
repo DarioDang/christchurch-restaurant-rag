@@ -534,26 +534,38 @@ html, body {
     font-size: 0.82rem;
   }
 
-  /* ── Header: stack into two rows so stats are never cut off ── */
+  /* ── Header: stack into a centered column on mobile ── */
   .header {
-    flex-wrap: wrap;
-    row-gap: 0.35rem;
-    padding: 0.85rem 1rem;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    row-gap: 0.6rem;
+    padding: 1rem;
   }
-  .header__brand { flex: 1 1 auto; min-width: 0; }
+  .header__brand {
+    flex: none;
+    min-width: 0;
+    justify-content: center;
+    text-align: center;
+  }
   .header__title {
-    font-size: 1rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 1.15rem;
+    white-space: normal;   /* allow it to wrap naturally if needed, no more ellipsis */
+    overflow: visible;
+    text-overflow: clip;
+    text-align: center;
   }
-  .header__right { flex-shrink: 0; }
+  .header__right {
+    flex-shrink: 0;
+    justify-content: center;
+    width: 100%;
+  }
   .header__stats {
-    order: 3;
-    flex-basis: 100%;
-    font-size: 0.68rem;
+    order: initial;
+    flex-basis: auto;
+    font-size: 0.7rem;
     white-space: normal;
     max-width: none;
+    text-align: center;
   }
 
   /* ── Footer pipeline: replace diagram with a simple text trail on mobile.
