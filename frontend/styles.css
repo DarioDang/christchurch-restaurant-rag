@@ -30,7 +30,8 @@ html, body {
 .app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100vh;       /* fallback for browsers without dvh support */
+  height: 100dvh;      /* shrinks correctly when mobile keyboard opens */
   max-width: 720px;
   margin: 0 auto;
 }
@@ -94,17 +95,26 @@ html, body {
 .location { position: relative; }
 
 .location__btn {
+  position: relative; /* anchor for the ::after hitbox below */
   background: transparent;
   border: 1px solid var(--line);
   color: var(--stone-dim);
   border-radius: 8px;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+/* Invisible tap-area extension: keeps the visible button compact at 36px
+   while giving touch input the full 44px Apple/Google recommend. */
+.location__btn::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
 }
 
 .location__icon {
@@ -263,6 +273,7 @@ html, body {
   line-height: 1.5;
   font-size: 0.95rem;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;   /* long unbroken strings (URLs, addresses) wrap instead of overflowing */
   animation: msgIn 0.25s ease both;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
@@ -400,10 +411,13 @@ html, body {
   border: 1px solid var(--line);
   color: var(--stone);
   border-radius: var(--radius);
-  padding: 0.5rem 0.85rem;
+  padding: 0.65rem 0.85rem;  /* taller for a better tap target (~44px incl. line-height) */
   font-family: var(--font-body);
   font-size: 0.85rem;
+  line-height: 1.3;
   cursor: pointer;
+  max-width: 100%;
+  overflow-wrap: anywhere;   /* long words/queries wrap instead of overflowing the row */
   transition: border-color 0.15s ease, transform 0.15s ease, background-color 0.15s ease;
 }
 .examples__chip:hover { border-color: var(--gold); background: var(--panel-light); transform: translateY(-1px); }
@@ -499,7 +513,86 @@ html, body {
   .chat { padding: 1rem; }
   .composer { padding: 0.75rem 1rem 1rem; }
   .msg-group { max-width: 90%; }
-  .location__panel { right: -0.5rem; width: 240px; }
+  /* ── Location panel: anchor safely within the viewport on mobile.
+     The previous right:-0.5rem assumed .location stayed pinned to the
+     far right, but the header now wraps to two rows, so the panel's
+     fixed-offset positioning could clip against the screen edge. ── */
+  .location__panel {
+    position: fixed;
+    top: 4.75rem;
+    left: 1rem;
+    right: 1rem;
+    width: auto;
+    max-width: 320px;
+    margin: 0 auto;
+  }
+
+  /* ── Suggestion chips: cap width so long queries wrap their own text
+     instead of stretching to dominate the row ── */
+  .examples__chip {
+    max-width: calc(100% - 0.5rem);
+    font-size: 0.82rem;
+  }
+
+  /* ── Header: stack into two rows so stats are never cut off ── */
+  .header {
+    flex-wrap: wrap;
+    row-gap: 0.35rem;
+    padding: 0.85rem 1rem;
+  }
+  .header__brand { flex: 1 1 auto; min-width: 0; }
+  .header__title {
+    font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .header__right { flex-shrink: 0; }
+  .header__stats {
+    order: 3;
+    flex-basis: 100%;
+    font-size: 0.68rem;
+    white-space: normal;
+    max-width: none;
+  }
+
+  /* ── Footer pipeline: replace diagram with a simple text trail on mobile.
+     The icon/arrow diagram doesn't read well this small — a labeled
+     sequence with separators communicates the same flow more clearly
+     and takes less vertical space. ── */
+  .site-footer { padding: 0.5rem 0.75rem 0.5rem; }
+
+  .pipeline.pipeline {
+    display: none !important; /* hide the icon/arrow diagram below 600px,
+                                  forced to win regardless of rule order
+                                  since the unscoped .pipeline { display:flex }
+                                  rule appears later in the file */
+  }
+
+  .pipeline-mobile {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: var(--stone-dim);
+    text-align: center;
+  }
+  .pipeline-mobile__sep {
+    color: var(--gold);
+    opacity: 0.7;
+  }
+
+  .site-footer__copyright { font-size: 0.58rem; margin-top: 0.4rem; }
+  .site-footer__social { margin-top: 0.35rem; gap: 0.4rem; }
+  .site-footer__social a { width: 22px; height: 22px; }
+  .site-footer__social img { width: 12px; height: 12px; }
+}
+
+@media (min-width: 601px) {
+  .pipeline-mobile { display: none; } /* desktop keeps the full diagram */
 }
 
 .msg--system {
